@@ -44,7 +44,7 @@
           <th class="col-serial col-serial-header">#</th>
           <th class="col-name sort-col" data-col="name"><a class="th-sort" href="/documents?{{.SortURL "name"}}" hx-get="/documents/list?{{.SortURL "name"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Name<span class="sort-arrow {{if eq .SortBy "name"}}active {{.SortDir}}{{end}}"></span></a></th>
           <th class="col-type sort-col" data-col="type"><a class="th-sort" href="/documents?{{.SortURL "type"}}" hx-get="/documents/list?{{.SortURL "type"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Type<span class="sort-arrow {{if eq .SortBy "type"}}active {{.SortDir}}{{end}}"></span></a></th>
-          <th>Tags</th>
+          <th class="col-tags">Tags</th>
           <th class="col-date sort-col" data-col="date"><a class="th-sort" href="/documents?{{.SortURL "date"}}" hx-get="/documents/list?{{.SortURL "date"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Uploaded<span class="sort-arrow {{if eq .SortBy "date"}}active {{.SortDir}}{{end}}"></span></a></th>
           <th class="col-size sort-col" data-col="size"><a class="th-sort" href="/documents?{{.SortURL "size"}}" hx-get="/documents/list?{{.SortURL "size"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Size<span class="sort-arrow {{if eq .SortBy "size"}}active {{.SortDir}}{{end}}"></span></a></th>
           <th class="col-actions"></th>
@@ -61,9 +61,9 @@
             </a>
           </td>
           <td class="cell-muted col-type">
-            {{if $doc.MimeType}}{{$doc.MimeType}}{{else}}{{if $doc.Extension}}.{{$doc.Extension}}{{else}}unknown{{end}}{{end}}
+            {{if $doc.Extension}}{{extUpper $doc.Extension}}{{else}}{{if $doc.MimeType}}{{$doc.MimeType}}{{else}}UNKNOWN{{end}}{{end}}
           </td>
-          <td>
+          <td class="col-tags">
             <div class="cell-tags">
               {{range $doc.Tags}}<span class="chip" style="--tag: {{.Color}}"><span class="pill-dot"></span>{{.Name}}</span>{{end}}
               {{if not $doc.Tags}}<span class="chip chip-plain">untagged</span>{{end}}

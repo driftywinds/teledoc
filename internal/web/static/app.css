@@ -369,7 +369,35 @@ select.input { appearance: auto; }
   overflow: hidden;
 }
 
-.doc-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.doc-table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+/* Fixed-layout column widths: keeps the table inside its container no matter
+   how long a string in any single cell is. Long content truncates with an
+   ellipsis (where white-space is nowrap) or wraps (otherwise) instead of
+   pushing the delete button / later columns off-screen. */
+.col-serial { width: 3.2rem; }
+.col-name   { width: 32%; }
+.col-type   { width: 4.5rem; }
+.col-tags   { width: 22%; }
+.col-date   { width: 7.5rem; }
+.col-size   { width: 5.5rem; }
+.col-actions{ width: 5rem; }
+
+.col-type, .col-name, .col-tags {
+  max-width: 100%;
+  overflow: hidden;
+}
+.col-type .cell-muted, .col-name .doc-name {
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
 
 .doc-table thead th {
   text-align: left;
