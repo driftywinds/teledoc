@@ -164,6 +164,17 @@ func (s *Store) lastInsertID(res sql.Result) (int64, error) {
 		return 0, fmt.Errorf("last insert id: %w", err)
 	}
 	return id, nil
+}
+
+// DeleteDocument removes a document's metadata from the archive. Its tag links
+// cascade away via the foreign key. The file on Telegram is NOT deleted — this
+// only removes the entry from the app's database.
+func (s *Store) DeleteDocument(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM documents WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete document: %w", err)
+	}
+	return nil
 }// DocumentFilter selects which documents ListDocuments returns.
 type DocumentFilter struct {
 	Search   string  // substring match on file name

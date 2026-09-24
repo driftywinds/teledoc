@@ -487,6 +487,36 @@ th:has(.th-sort:hover) { color: var(--foreground); }
 
 .cell-tags { display: flex; flex-wrap: wrap; gap: var(--s1); max-width: 260px; }
 
+/* Actions column (delete button) */
+.col-actions { width: 1%; white-space: nowrap; text-align: right; }
+.col-actions .row-actions { justify-content: flex-end; }
+
+/* One-time deletion notice modal */
+.notice-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: var(--s4);
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(2px);
+}
+.notice-card {
+  width: min(430px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.notice-card h2 { margin: 0; font-size: 1.15rem; }
+.notice-card p { margin: 0; }
+.notice-card .btn { align-self: flex-end; }
+
 .table-empty { padding: 0; }
 
 /* ---------- Table footer: per-page + pager ---------- */

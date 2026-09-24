@@ -73,6 +73,7 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("GET /documents", s.handleDocuments)
 	protected.HandleFunc("GET /documents/list", s.handleDocumentList) // htmx partial
 	protected.HandleFunc("POST /documents/{id}/tags", s.handleDocumentTag)
+	protected.HandleFunc("POST /documents/{id}/delete", s.handleDocumentDelete)
 	protected.HandleFunc("GET /tags", s.handleTags)
 	protected.HandleFunc("POST /tags", s.handleCreateTag)
 	protected.HandleFunc("POST /tags/{id}/delete", s.handleDeleteTag)
@@ -479,6 +480,32 @@ func (s *Server) handleDocumentTag(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// handleDocumentDelete removes a document entry from the archive. This only
+// deletes the metadata row from the app's DB — it does NOT remove the file
+// from the Telegram channel. The delete form carries a hidden confirm token so
+// a stale/naive request cannot wipe a row silently.
+func (s *Server) handleDocumentDelete(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	if r.PostFormValue("confirm") != "1" {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	if err := s.store.DeleteDocument(id); err != nil {
+		setFlash(w, "Could not delete document: "+err.Error())
+	} else {
+		setFlash(w, "Document deleted from the archive.")
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
