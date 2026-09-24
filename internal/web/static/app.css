@@ -402,6 +402,9 @@ th:has(.th-sort:hover) { color: var(--foreground); }
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.col-serial.col-serial-header {
+  text-align: center;
+}
 
 /* Sort arrow indicators — pure CSS, no text characters */
 .sort-arrow {
@@ -602,9 +605,10 @@ th:has(.th-sort:hover) { color: var(--foreground); }
 }
 .tag-color-picker::-webkit-color-swatch-wrapper { padding: 0; }
 .tag-color-picker::-webkit-color-swatch { border: none; border-radius: 50%; }
-.tag-color-hex {
-  width: 5.2em;
-  padding: 0.1rem 0.3rem;
+.tag-color-form .tag-color-hex {
+  width: 4.5rem;
+  min-width: 4.5rem;
+  padding: 0.1rem 0.4rem;
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;

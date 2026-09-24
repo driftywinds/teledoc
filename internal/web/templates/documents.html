@@ -41,7 +41,7 @@
     <table class="doc-table" data-sort="{{.SortBy}}" data-dir="{{.SortDir}}">
       <thead>
         <tr>
-          <th class="col-serial">#</th>
+          <th class="col-serial col-serial-header">#</th>
           <th class="col-name sort-col" data-col="name"><a class="th-sort" href="/documents?{{.SortURL "name"}}" hx-get="/documents/list?{{.SortURL "name"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Name<span class="sort-arrow {{if eq .SortBy "name"}}active {{.SortDir}}{{end}}"></span></a></th>
           <th class="col-type sort-col" data-col="type"><a class="th-sort" href="/documents?{{.SortURL "type"}}" hx-get="/documents/list?{{.SortURL "type"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Type<span class="sort-arrow {{if eq .SortBy "type"}}active {{.SortDir}}{{end}}"></span></a></th>
           <th>Tags</th>
