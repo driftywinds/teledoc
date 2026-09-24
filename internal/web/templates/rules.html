@@ -105,39 +105,46 @@
 <div class="rule-list">
   {{range .Rules}}
   <div class="card rule-row">
-    <div class="rule-head">
+    <div class="rule-identity">
       <strong class="rule-name">{{.Name}}</strong>
-      {{if .Enabled}}<span class="badge badge-on">enabled</span>{{else}}<span class="badge badge-off">disabled</span>{{end}}
-      <span class="badge badge-plain">match {{.MatchMode}}</span>
+      <div class="rule-badges">
+        {{if .Enabled}}<span class="badge badge-on">enabled</span>{{else}}<span class="badge badge-off">disabled</span>{{end}}
+        <span class="badge badge-plain">match {{.MatchMode}}</span>
+      </div>
     </div>
-    <div class="rule-conditions">
-      {{if .Conditions}}
-      {{range .Conditions}}
-      <div class="rule-cond"><code>{{.Field}}</code> {{.Operator}} <code>&ldquo;{{.Value}}&rdquo;</code>{{if .CaseSensitive}} <span class="muted">(case-sensitive)</span>{{end}}</div>
-      {{end}}
-      {{else}}
-      <div class="rule-cond muted">no conditions - matches every document</div>
-      {{end}}
-    </div>
-    <div class="rule-actions-line">
-      <span class="muted small">Applies tags:</span>
-      {{$tags := $.Tags}}
-      {{range .TagIDs}}
-      {{$tid := .}}
-      {{range $tags}}{{if eq $tid .ID}}<span class="chip" style="--tag: {{.Color}}"><span class="pill-dot"></span>{{.Name}}</span>{{end}}{{end}}
-      {{end}}
-    </div>
-    <div class="row-actions">
-      <form method="post" action="/rules/{{.ID}}/run">
-        <button class="btn btn-secondary btn-sm" type="submit">Run now</button>
-      </form>
-      <form method="post" action="/rules/{{.ID}}/toggle">
-        {{if .Enabled}}<button class="btn btn-ghost btn-sm" type="submit">Disable</button>
-        {{else}}<button class="btn btn-ghost btn-sm" type="submit">Enable</button>{{end}}
-      </form>
-      <form method="post" action="/rules/{{.ID}}/delete">
-        <button class="btn btn-danger btn-sm" type="submit">Delete</button>
-      </form>
+    <div class="rule-spec">
+      <div class="rule-conditions">
+        {{if .Conditions}}
+        {{range .Conditions}}
+        <span class="rule-cond"><code>{{.Field}}</code> {{.Operator}} <code>&ldquo;{{.Value}}&rdquo;</code>{{if .CaseSensitive}} <span class="muted">(case-sensitive)</span>{{end}}</span>
+        {{end}}
+        {{else}}
+        <span class="rule-cond muted">no conditions — matches every document</span>
+        {{end}}
+      </div>
+      <div class="rule-tags-line">
+        <span class="rule-tags-label">Applies</span>
+        {{$tags := $.Tags}}
+        {{range .TagIDs}}
+        {{$tid := .}}
+        {{range $tags}}{{if eq $tid .ID}}<span class="chip" style="--tag: {{.Color}}"><span class="pill-dot"></span>{{.Name}}</span>{{end}}{{end}}
+        {{end}}
+      </div>
+      <div class="rule-footer">
+        <span class="rule-hint">Runs on new uploads{{if .Enabled}}{{else}} · currently disabled{{end}} — use Run now to apply to the existing archive</span>
+        <div class="row-actions">
+          <form method="post" action="/rules/{{.ID}}/run">
+            <button class="btn btn-secondary btn-sm" type="submit">Run now</button>
+          </form>
+          <form method="post" action="/rules/{{.ID}}/toggle">
+            {{if .Enabled}}<button class="btn btn-ghost btn-sm" type="submit">Disable</button>
+            {{else}}<button class="btn btn-ghost btn-sm" type="submit">Enable</button>{{end}}
+          </form>
+          <form method="post" action="/rules/{{.ID}}/delete">
+            <button class="btn btn-danger btn-sm" type="submit">Delete</button>
+          </form>
+        </div>
+      </div>
     </div>
   </div>
   {{end}}

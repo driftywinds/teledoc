@@ -2,12 +2,12 @@
 <div class="page-header">
   <div>
     <h1>Documents</h1>
-    <p class="muted">{{.TotalDocs}} archived from your Telegram channel. Click a card to open it in Telegram.</p>
+    <p class="muted">{{.TotalDocs}} archived from your Telegram channel. Click a row to open it in Telegram.</p>
   </div>
 </div>
 
 <form id="filter-form" class="filterbar"
-      hx-get="/documents/list" hx-target="#doc-grid" hx-trigger="change, input delay:300ms from:find input, submit" hx-swap="outerHTML">
+      hx-get="/documents/list" hx-target="#doc-table-wrap" hx-trigger="change, input delay:300ms from:find input, submit" hx-swap="outerHTML">
   <input type="search" name="q" value="{{.Search}}" placeholder="Search documents..." class="input search-input" autocomplete="off">
   <div class="tag-filter" role="group" aria-label="Filter by tag">
     {{range .Tags}}
@@ -35,26 +35,51 @@
 {{end}}
 
 {{define "fragment_grid"}}
-<div id="doc-grid" class="doc-grid">
+<div id="doc-table-wrap">
   {{if .Documents}}
-    {{range .Documents}}
-    <a class="doc-card" href="{{.MessageLink}}" target="_blank" rel="noopener">
-      <div class="doc-icon ext-{{lower .Extension}}">{{if .Extension}}{{extUpper .Extension}}{{else}}DOC{{end}}</div>
-      <div class="doc-name" title="{{.FileName}}">{{.FileName}}</div>
-      <div class="doc-meta">{{fmtSize .FileSize}} · {{fmtDate .UploadedAt}}</div>
-      <div class="doc-tags">
-        {{range .Tags}}<span class="chip" style="--tag: {{.Color}}"><span class="pill-dot"></span>{{.Name}}</span>{{end}}
-        {{if not .Tags}}<span class="chip chip-plain">untagged</span>{{end}}
-      </div>
-    </a>
-    {{end}}
+  <div class="table-card">
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th class="col-type">Type</th>
+          <th>Tags</th>
+          <th class="col-date">Uploaded</th>
+          <th class="col-size">Size</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Documents}}
+        <tr>
+          <td>
+            <a class="doc-link" href="{{.MessageLink}}" target="_blank" rel="noopener" title="{{.FileName}} — opens in Telegram">
+              <span class="doc-icon ext-{{lower .Extension}}">{{if .Extension}}{{extUpper .Extension}}{{else}}DOC{{end}}</span>
+              <span class="doc-name">{{.FileName}}</span>
+            </a>
+          </td>
+          <td class="cell-muted col-type">
+            {{if .MimeType}}{{.MimeType}}{{else}}{{if .Extension}}.{{.Extension}}{{else}}unknown{{end}}{{end}}
+          </td>
+          <td>
+            <div class="cell-tags">
+              {{range .Tags}}<span class="chip" style="--tag: {{.Color}}"><span class="pill-dot"></span>{{.Name}}</span>{{end}}
+              {{if not .Tags}}<span class="chip chip-plain">untagged</span>{{end}}
+            </div>
+          </td>
+          <td class="cell-muted col-date">{{fmtDate .UploadedAt}}</td>
+          <td class="cell-muted col-size">{{fmtSize .FileSize}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
   {{else}}
-    <div class="empty-state">
-      <div class="empty-ico">▤</div>
-      <h2>No documents here</h2>
-      <p>Upload a file to your Telegram channel and it will appear here within seconds.</p>
-      <p class="muted">Note: the bot only sees uploads made <em>after</em> it was added to the channel.</p>
-    </div>
+  <div class="empty-state">
+    <div class="empty-ico">▤</div>
+    <h2>No documents here</h2>
+    <p>Upload a file to your Telegram channel and it will appear here within seconds.</p>
+    <p class="muted">Note: the bot only sees uploads made <em>after</em> it was added to the channel.</p>
+  </div>
   {{end}}
 </div>
 {{end}}

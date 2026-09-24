@@ -2,7 +2,7 @@
 <div class="page-header">
   <div>
     <h1>Tags</h1>
-    <p class="muted">Labels you can attach to documents, manually or through tagging rules.</p>
+    <p class="muted">Click a tag to see every document classified under it.</p>
   </div>
 </div>
 
@@ -14,9 +14,12 @@
 {{if .}}
 <div class="tag-list">
   {{range .}}
-  <div class="card tag-row">
-    <span class="chip" style="--tag: {{.Color}}"><span class="pill-dot"></span>{{.Name}}</span>
+  <div class="card tag-row is-link" style="--tag: {{.Color}}">
+    <a class="chip" href="/documents?tag={{.ID}}" style="--tag: {{.Color}}" title="Show documents tagged {{.Name}}">
+      <span class="pill-dot"></span>{{.Name}}
+    </a>
     <span class="muted">{{.Count}} document{{if ne .Count 1}}s{{end}}</span>
+    <span class="tag-open" aria-hidden="true">view documents →</span>
     <form method="post" action="/tags/{{.ID}}/delete" class="row-actions">
       <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
     </form>
