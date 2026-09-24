@@ -31,7 +31,7 @@
       </a>
     </nav>
     <div class="sidebar-footer">
-      {{if .Password}}
+      {{if .Authed}}
       <form method="post" action="/logout"><button class="btn btn-ghost btn-sm" type="submit">Log out</button></form>
       {{end}}
       <span class="muted">teledoc · self-hosted archive</span>

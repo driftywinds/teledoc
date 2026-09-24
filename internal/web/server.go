@@ -245,6 +245,10 @@ func loadTemplates() *template.Template {
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, page pageData) {
 	tpl := loadTemplates()
 	page.IsHTMX = r.Header.Get("HX-Request") == "true"
+	// Authed reflects a valid session on the current request (not merely that
+	// auth is enabled), so controls like the logout button only appear once
+	// the user has actually signed in.
+	page.Authed = s.password != "" && s.validSession(r)
 	if page.IsHTMX {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(status)
