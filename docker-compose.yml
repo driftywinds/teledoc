@@ -1,0 +1,18 @@
+services:
+  tgarchive:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Required: token from @BotFather
+      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN in .env}
+      # Optional: set to require a password on the web UI
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      DB_PATH: /data/tgarchive.db
+      LISTEN_ADDR: :8080
+    volumes:
+      - tgarchive-data:/data
+
+volumes:
+  tgarchive-data:

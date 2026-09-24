@@ -1,0 +1,33 @@
+{{define "page_tags"}}
+<div class="page-header">
+  <div>
+    <h1>Tags</h1>
+    <p class="muted">Labels you can attach to documents, manually or through tagging rules.</p>
+  </div>
+</div>
+
+<form method="post" action="/tags" class="card inline-form">
+  <input class="input" type="text" name="name" placeholder="New tag name, e.g. Manual" required>
+  <button class="btn btn-primary" type="submit">Create tag</button>
+</form>
+
+{{if .}}
+<div class="tag-list">
+  {{range .}}
+  <div class="card tag-row">
+    <span class="chip" style="--tag: {{.Color}}"><span class="pill-dot"></span>{{.Name}}</span>
+    <span class="muted">{{.Count}} document{{if ne .Count 1}}s{{end}}</span>
+    <form method="post" action="/tags/{{.ID}}/delete" class="row-actions">
+      <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
+    </form>
+  </div>
+  {{end}}
+</div>
+{{else}}
+<div class="empty-state">
+  <div class="empty-ico">◈</div>
+  <h2>No tags yet</h2>
+  <p>Create your first tag above, or let a tagging rule create tags automatically.</p>
+</div>
+{{end}}
+{{end}}

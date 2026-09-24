@@ -1,0 +1,69 @@
+{{define "head"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} - TG Archive</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237c5cff' stroke-width='2'%3E%3Cpath d='M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z'/%3E%3Cpath d='M12 3v6l3-3-3-3z'/%3E%3C/svg%3E">
+<script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <a class="brand" href="/">
+      <span class="brand-mark">TG</span>
+      <span class="brand-name">Archive</span>
+    </a>
+    <nav class="nav">
+      <a href="/" class="nav-item{{if eq .Inner "page_documents"}} active{{end}}">
+        <span class="nav-ico">▤</span> Documents
+      </a>
+      <a href="/tags" class="nav-item{{if eq .Inner "page_tags"}} active{{end}}">
+        <span class="nav-ico">◈</span> Tags
+      </a>
+      <a href="/rules" class="nav-item{{if eq .Inner "page_rules"}} active{{end}}">
+        <span class="nav-ico">⚙</span> Tagging Rules
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      {{if .Password}}
+      <form method="post" action="/logout"><button class="btn btn-ghost btn-sm" type="submit">Log out</button></form>
+      {{end}}
+      <span class="muted">self-hosted archive</span>
+    </div>
+  </aside>
+  <main class="main">
+    {{if .Flash}}<div class="flash" role="status">{{.Flash}}</div>{{end}}
+{{end}}
+
+{{define "foot"}}
+  </main>
+</div>
+</body>
+</html>
+{{end}}
+
+{{define "layout"}}
+{{template "head" .}}
+{{if eq .Inner "page_documents"}}
+  {{template "page_documents" .Data}}
+{{else if eq .Inner "page_tags"}}
+  {{template "page_tags" .Data}}
+{{else if eq .Inner "page_rules"}}
+  {{template "page_rules" .Data}}
+{{else if eq .Inner "page_login"}}
+  {{template "page_login" .Data}}
+{{else}}
+  <div class="empty-state"><p>Unknown page.</p></div>
+{{end}}
+{{template "foot" .}}
+{{end}}
+
+{{define "fragment"}}
+{{if eq .Inner "fragment_grid"}}
+  {{template "fragment_grid" .Data}}
+{{else if eq .Inner "page_documents"}}
+  {{template "page_documents" .Data}}
+{{end}}
+{{end}}

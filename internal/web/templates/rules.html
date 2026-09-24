@@ -1,0 +1,152 @@
+{{define "page_rules"}}
+<div class="page-header">
+  <div>
+    <h1>Tagging rules</h1>
+    <p class="muted">Automatically tag new documents. Use <strong>Run now</strong> to apply a rule to documents already in the archive.</p>
+  </div>
+</div>
+
+<div class="card rule-builder">
+  <h2>New rule</h2>
+  <form method="post" action="/rules">
+    <div class="form-row">
+      <label class="fld">
+        <span class="fld-label">Rule name</span>
+        <input class="input" type="text" name="name" placeholder="e.g. Manuals" required>
+      </label>
+      <label class="fld fld-narrow">
+        <span class="fld-label">Match</span>
+        <select class="input" name="match_mode">
+          <option value="all">ALL conditions</option>
+          <option value="any">ANY condition</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="conditions" id="conditions">
+      <div class="condition-row">
+        <select class="input" name="field">
+          <option value="name">File name</option>
+          <option value="extension">Extension</option>
+          <option value="mime_type">MIME type</option>
+        </select>
+        <select class="input" name="operator">
+          <option value="contains">contains</option>
+          <option value="not_contains">does not contain</option>
+          <option value="equal">equals</option>
+          <option value="not_equal">does not equal</option>
+          <option value="starts_with">starts with</option>
+          <option value="ends_with">ends with</option>
+        </select>
+        <input class="input" type="text" name="value" placeholder="value, e.g. manual">
+        <label class="case-toggle"><input type="checkbox" name="case_0"> case-sensitive</label>
+      </div>
+      <div class="condition-row">
+        <select class="input" name="field">
+          <option value="name">File name</option>
+          <option value="extension">Extension</option>
+          <option value="mime_type">MIME type</option>
+        </select>
+        <select class="input" name="operator">
+          <option value="contains">contains</option>
+          <option value="not_contains">does not contain</option>
+          <option value="equal">equals</option>
+          <option value="not_equal">does not equal</option>
+          <option value="starts_with">starts with</option>
+          <option value="ends_with">ends with</option>
+        </select>
+        <input class="input" type="text" name="value" placeholder="optional second condition">
+        <label class="case-toggle"><input type="checkbox" name="case_1"> case-sensitive</label>
+      </div>
+      <div class="condition-row">
+        <select class="input" name="field">
+          <option value="name">File name</option>
+          <option value="extension">Extension</option>
+          <option value="mime_type">MIME type</option>
+        </select>
+        <select class="input" name="operator">
+          <option value="contains">contains</option>
+          <option value="not_contains">does not contain</option>
+          <option value="equal">equals</option>
+          <option value="not_equal">does not equal</option>
+          <option value="starts_with">starts with</option>
+          <option value="ends_with">ends with</option>
+        </select>
+        <input class="input" type="text" name="value" placeholder="optional third condition">
+        <label class="case-toggle"><input type="checkbox" name="case_2"> case-sensitive</label>
+      </div>
+    </div>
+    <p class="muted small">Empty value fields are ignored. Matching is case-insensitive unless you tick case-sensitive.</p>
+
+    <div class="form-row">
+      <div class="fld fld-grow">
+        <span class="fld-label">Apply tags</span>
+        <div class="tag-picker">
+          {{$hasTags := len .Tags}}
+          {{if $hasTags}}
+          {{range .Tags}}
+          <label class="pill" style="--tag: {{.Color}}">
+            <input type="checkbox" name="tags" value="{{.ID}}">
+            <span class="pill-dot"></span>{{.Name}}
+          </label>
+          {{end}}
+          {{else}}
+          <span class="muted">No tags exist yet - <a href="/tags">create one on the Tags page</a> first.</span>
+          {{end}}
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" type="submit" {{$hasTags := len .Tags}}{{if not $hasTags}}disabled{{end}}>Create rule</button>
+  </form>
+</div>
+
+{{if .Rules}}
+<div class="rule-list">
+  {{range .Rules}}
+  <div class="card rule-row">
+    <div class="rule-head">
+      <strong class="rule-name">{{.Name}}</strong>
+      {{if .Enabled}}<span class="badge badge-on">enabled</span>{{else}}<span class="badge badge-off">disabled</span>{{end}}
+      <span class="badge badge-plain">match {{.MatchMode}}</span>
+    </div>
+    <div class="rule-conditions">
+      {{if .Conditions}}
+      {{range .Conditions}}
+      <div class="rule-cond"><code>{{.Field}}</code> {{.Operator}} <code>&ldquo;{{.Value}}&rdquo;</code>{{if .CaseSensitive}} <span class="muted">(case-sensitive)</span>{{end}}</div>
+      {{end}}
+      {{else}}
+      <div class="rule-cond muted">no conditions - matches every document</div>
+      {{end}}
+    </div>
+    <div class="rule-actions-line">
+      <span class="muted small">Applies tags:</span>
+      {{$tags := $.Tags}}
+      {{range .TagIDs}}
+      {{$tid := .}}
+      {{range $tags}}{{if eq $tid .ID}}<span class="chip" style="--tag: {{.Color}}"><span class="pill-dot"></span>{{.Name}}</span>{{end}}{{end}}
+      {{end}}
+    </div>
+    <div class="row-actions">
+      <form method="post" action="/rules/{{.ID}}/run">
+        <button class="btn btn-secondary btn-sm" type="submit">Run now</button>
+      </form>
+      <form method="post" action="/rules/{{.ID}}/toggle">
+        {{if .Enabled}}<button class="btn btn-ghost btn-sm" type="submit">Disable</button>
+        {{else}}<button class="btn btn-ghost btn-sm" type="submit">Enable</button>{{end}}
+      </form>
+      <form method="post" action="/rules/{{.ID}}/delete">
+        <button class="btn btn-danger btn-sm" type="submit">Delete</button>
+      </form>
+    </div>
+  </div>
+  {{end}}
+</div>
+{{else}}
+<div class="empty-state">
+  <div class="empty-ico">⚙</div>
+  <h2>No rules yet</h2>
+  <p>Example: file name contains &ldquo;manual&rdquo; (case-insensitive) &rarr; applies the <em>Manual</em> tag.</p>
+</div>
+{{end}}
+{{end}}

@@ -1,0 +1,114 @@
+{
+  "state": "Project: Telegram-to-web document archive (Papra-style), single admin user, self-hosted.\n- A Telegram bot is added as admin to a channel. The channel admin uploads documents (pdf, docx, txt, csv, etc.) to the channel.\n- The bot ingests each uploaded document, applies auto-tagging rules (e.g. filename contains `manual` case-insensitively -> tag `Manual`), stores metadata in SQLite, and a Go-served web UI lists documents filterable by tag; clicking a document opens its Telegram message link so the admin can download it from Telegram.\n- Backend: Go, single binary, SQLite database (user just confirmed SQLite).\n- Frontend: must imitate Papra's look: minimalistic, dark-mode-first, shadcn-style cards, tags as small rounded pills. Papra's real stack is SolidJS + Shadcn Solid + UnoCSS + Hono + Drizzle (its docs site is Astro). Hard constraint: NO TypeScript toolchain; frontend must be Go-served.\n- Constraints: runs on a Windows home-server or small VPS; may or may not have a public HTTPS URL; single tenant (one channel, one admin) for v1.\n- Verified Telegram Bot API facts: bots CANNOT fetch past channel history via the Bot API (no method exists); they only receive updates for messages posted after being added as channel admin (`channel_post` updates include document attachments). Private-channel links `t.me/c/<chatid>/<msgid>` work only for channel members; `t.me/<username>/<msgid>` works for public channels. Bot API `getFile` download is capped at 20 MB.",
+  "model": "jev-latest",
+  "questions": {
+    "update_transport": {
+      "type": "choice",
+      "instructions": "How should the Go bot receive Telegram updates, given it may run behind NAT without a public HTTPS URL?",
+      "criteria": {
+        "long_polling": "Bot calls getUpdates in a loop; no public URL or TLS needed; works behind NAT; slight delay.",
+        "webhook": "Bot exposes an HTTPS endpoint Telegram calls; needs public URL and TLS; instant updates.",
+        "both": "Long polling by default with optional webhook mode behind a config flag; more code to maintain."
+      }
+    },
+    "botlib": {
+      "type": "choice",
+      "instructions": "Which Telegram Bot API approach should the Go backend use?",
+      "criteria": {
+        "stdlib": "Call the Bot API directly with net/http and hand-written update structs; zero dependencies, full control, more boilerplate.",
+        "go-telegram-bot-api": "github.com/go-telegram-bot-api/telegram-bot-api/v5 - classic wrapper, stable but largely unmaintained since 2022.",
+        "go-telegram/bot": "github.com/go-telegram/bot - actively maintained, supports long polling and webhooks, modern context-based API."
+      }
+    },
+    "storage_mode": {
+      "type": "choice",
+      "instructions": "What should be stored for each ingested document, given the web UI must open Telegram message links for access?",
+      "criteria": {
+        "metadata_only": "Store filename, size, mime, chat/message ids, tags in SQLite; file bytes stay in Telegram only; UI links out to t.me.",
+        "cache_copy": "Also download each file once into a local files/ dir; downloads still work if Telegram is unreachable; uses disk.",
+        "lazy_download": "Store metadata; download through the bot only when the user clicks download in the UI; note the 20 MB bot getFile cap."
+      }
+    },
+    "web_arch": {
+      "type": "choice",
+      "instructions": "How should the Go web UI be built, given the no-TypeScript constraint and the desire to imitate Papra?",
+      "criteria": {
+        "server_templates": "Go html/template renders full pages, plain forms/links for filters; simplest, no JS build step; page reloads on filter.",
+        "htmx": "Server-rendered templates plus htmx for tag filter/search without page reloads; one small JS file, no build step.",
+        "spa": "Static SPA calling a JSON API from Go; closest to Papra's own architecture but adds a JS/TS toolchain."
+      }
+    },
+    "frontend_framework": {
+      "type": "choice",
+      "instructions": "How should the Papra-like styling be implemented in the Go-served frontend?",
+      "criteria": {
+        "tailwind_cdn": "Utility classes matching the shadcn look, loaded via a CDN script tag; no build step; needs internet on first load.",
+        "vanilla_css": "Hand-written small CSS file with CSS variables mimicking shadcn tokens; zero external dependencies, fully offline.",
+        "unocss_build": "UnoCSS like Papra itself, but needs a Node build step, contradicting the no-TS constraint."
+      }
+    },
+    "db_lib": {
+      "type": "choice",
+      "instructions": "Which SQLite driver/approach for the Go backend on Windows?",
+      "criteria": {
+        "modernc": "modernc.org/sqlite - pure-Go driver, no CGO, cross-compiles easily; slightly slower.",
+        "mattn": "mattn/go-sqlite3 - battle-tested but needs CGO; on Windows requires a gcc toolchain.",
+        "sqlc_mattn": "sqlc codegen over mattn/go-sqlite3; type-safe queries but adds a codegen step and CGO."
+      }
+    },
+    "rule_engine": {
+      "type": "choice",
+      "instructions": "How powerful should the auto-tagging rule engine be in v1?",
+      "criteria": {
+        "filename_contains": "Only rule type: filename contains word X (case-insensitive) -> tag Y. Matches the stated example exactly; minimal UI.",
+        "papra_full": "Field (filename/extension/mime) x operator (contains, equals, starts with, regex) x value, multiple conditions per rule; mirrors Papra's engine; bigger UI.",
+        "contains_plus_ext": "Filename-contains rules plus an extension-based rule type (e.g. ext = csv -> tag Data); middle ground."
+      }
+    },
+    "tags_per_rule": {
+      "type": "choice",
+      "instructions": "When a rule matches a document, how many tags can it assign?",
+      "criteria": {
+        "single": "Each rule assigns exactly one tag when it matches; simpler model, matches the example.",
+        "multiple": "A matching rule can assign several tags at once; more flexible, slightly more UI."
+      }
+    },
+    "frontend_style": {
+      "type": "score",
+      "instructions": "On a 0-6 scale, how closely should the web UI copy Papra's visual design?",
+      "criteria": [
+        "Plain functional HTML, no theming at all.",
+        "Basic dark background and readable text, nothing more.",
+        "Dark theme with simple cards and colored tag pills.",
+        "Solid Papra-inspired look: dark-first palette, card grid, pill tags, decent spacing.",
+        "Close imitation: shadcn-style tokens, rounded cards, hover states, filter bar styled like Papra's.",
+        "Near pixel imitation of Papra's UI including sidebar layout, icons, and empty states.",
+        "Pixel-perfect clone attempt of Papra including animations and micro-interactions."
+      ]
+    },
+    "auth_password": {
+      "type": "noul",
+      "instructions": "Should the web UI be protected by a single admin password with a session cookie, given document metadata is private but the instance may run on a trusted LAN?",
+      "criteria": {
+        "true": "Yes, add a simple password gate and session cookie.",
+        "false": "No auth; assume trusted LAN only."
+      }
+    },
+    "reuse_existing_channel": {
+      "type": "noul",
+      "instructions": "Given the verified Telegram facts in the state (bots cannot read history, only new channel_post updates), is reusing an existing channel acceptable for this project?",
+      "criteria": {
+        "true": "Reusing an existing channel is fine; old documents are simply absent, new uploads are ingested.",
+        "false": "Reusing an existing channel is a real problem; a fresh dedicated channel is required."
+      }
+    },
+    "multi_org": {
+      "type": "noul",
+      "instructions": "Should v1 support multiple channels/organizations with separate document sets, or be strictly single-tenant?",
+      "criteria": {
+        "true": "Support multiple channels/orgs in v1.",
+        "false": "Single tenant in v1: one bot, one channel, one admin, one document list."
+      }
+    }
+  }
+}

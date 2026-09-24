@@ -1,0 +1,65 @@
+{
+  "state": "Follow-up architecture decisions for a Go + SQLite Telegram-to-web document archive imitating Papra.\n\nPreviously decided (Jev, earlier round): long polling, go-telegram/bot, metadata-only storage (file bytes stay in Telegram), Go html/template + htmx, vanilla CSS with shadcn-style tokens, modernc.org/sqlite (pure Go), single-tenant, optional ADMIN_PASSWORD gate, dark-first Papra-inspired look (~3.5/6 fidelity).\n\nNEW verified facts from Papra's actual source code (user now asks the tagging engine be as close to Papra's as possible):\n- Operators: equal, not_equal, contains, not_contains, starts_with, ends_with.\n- Condition: field + operator + value + isCaseSensitive (per-condition flag).\n- Fields in Papra: name and content. We ingest Telegram documents; filename, extension, and mime type are available cheaply. Extracting text content from pdf/docx would need extra parsing libraries and OCR is out of scope.\n- Rule: conditionMatchMode all (default) or any; actions = MULTIPLE tags per rule (earlier single-tag decision predates this); no conditions = rule matches everything; a failing condition never blocks ingestion.\n- Papra has an 'Apply to existing documents' background task re-running one rule over the whole archive with stats.\n\nEnvironment: user will test on a Windows PC first, then deploy with Docker; the app must be a single Go binary, no Node/TypeScript build step; SQLite via modernc driver; Telegram bot long polling.",
+  "model": "jev-latest",
+  "questions": {
+    "rule_fields": {
+      "type": "choice",
+      "instructions": "Which condition fields should the rule engine support in v1, given Papra has name+content but content extraction from pdf/docx adds heavy dependencies?",
+      "criteria": {
+        "name_only": "Only filename conditions; least surface, but weaker than Papra.",
+        "name_ext_mime": "Filename + extension + mime type; all cheap metadata, near-Papra power without parsing libraries.",
+        "name_content": "Filename + extracted text content like Papra; requires pdf/docx text extraction libraries, big scope increase."
+      }
+    },
+    "multi_tag_actions": {
+      "type": "noul",
+      "instructions": "Should a rule's action be able to apply multiple tags (Papra parity), superseding the earlier single-tag-per-rule decision?",
+      "criteria": {
+        "true": "Yes, actions apply one or more tags like Papra.",
+        "false": "No, keep one tag per rule."
+      }
+    },
+    "retag_feature": {
+      "type": "choice",
+      "instructions": "How should re-applying rules to already-archived documents be exposed in the UI?",
+      "criteria": {
+        "per_rule_run_now": "A 'Run now' button per rule, like Papra's 'Apply to existing documents', with a processed/tagged report.",
+        "global_button": "One global 'Re-run all rules' button; simpler but less precise.",
+        "both": "Per-rule 'Run now' plus a global re-run button."
+      }
+    },
+    "case_default": {
+      "type": "noul",
+      "instructions": "Should conditions default to case-insensitive (isCaseSensitive=false), matching the user's 'case agnostic' requirement and Papra's per-condition flag defaulting to insensitive?",
+      "criteria": {
+        "true": "Default case-insensitive, with a per-condition case-sensitive checkbox.",
+        "false": "Default case-sensitive."
+      }
+    },
+    "ui_layout": {
+      "type": "choice",
+      "instructions": "Which overall layout should the Papra-style web UI use?",
+      "criteria": {
+        "sidebar": "Papra-like left sidebar (Documents, Tagging Rules) with a main content area; closer to Papra.",
+        "topbar": "Simple top navigation bar; lighter, more Telegram-ish."
+      }
+    },
+    "docker_now": {
+      "type": "noul",
+      "instructions": "Should the Dockerfile and docker-compose.yml be created now (even though the user will test on Windows first), so deployment is ready right after local testing?",
+      "criteria": {
+        "true": "Create Dockerfile + compose now; test locally on Windows before building the image.",
+        "false": "Defer Docker files until after Windows testing."
+      }
+    },
+    "tests_depth": {
+      "type": "choice",
+      "instructions": "What level of automated tests should be written for the Go backend on day one?",
+      "criteria": {
+        "rules_only": "Unit tests for the rule engine only (operator semantics, match modes, case sensitivity), mirroring Papra's own test cases.",
+        "rules_store": "Rule engine plus SQLite store integration tests.",
+        "none": "No tests; manual verification only."
+      }
+    }
+  }
+}

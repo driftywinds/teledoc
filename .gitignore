@@ -1,0 +1,42 @@
+# --- Go ---
+# compiled binaries
+tgarchive
+tgarchive.exe
+*.exe
+*.exe~
+*.test
+*.out
+*.prof
+coverage.txt
+
+# --- Build / dependency artifacts ---
+/bin/
+/dist/
+vendor/
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Application data ---
+# SQLite databases and WAL/SHM sidecar files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+/data/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Editors & OS ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini

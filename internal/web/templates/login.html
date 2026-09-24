@@ -1,0 +1,16 @@
+{{define "page_login"}}
+<div class="login-wrap">
+  <div class="card login-card">
+    <div class="brand" style="margin-bottom: 1rem">
+      <span class="brand-mark">TG</span>
+      <span class="brand-name">Archive</span>
+    </div>
+    <h1>Sign in</h1>
+    <p class="muted">Enter the admin password (ADMIN_PASSWORD environment variable).</p>
+    <form method="post" action="/login">
+      <input class="input" type="password" name="password" placeholder="Password" autofocus required>
+      <button class="btn btn-primary" type="submit">Sign in</button>
+    </form>
+  </div>
+</div>
+{{end}}
