@@ -396,6 +396,13 @@ select.input { appearance: auto; }
 .th-sort:hover { color: var(--foreground); background: color-mix(in srgb, var(--primary) 10%, var(--surface-2)); }
 th:has(.th-sort:hover) { color: var(--foreground); }
 
+/* Serial number column — reference only, not sortable */
+.col-serial {
+  width: 3.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Sort arrow indicators — pure CSS, no text characters */
 .sort-arrow {
   display: inline-block;

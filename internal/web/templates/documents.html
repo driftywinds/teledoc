@@ -41,6 +41,7 @@
     <table class="doc-table" data-sort="{{.SortBy}}" data-dir="{{.SortDir}}">
       <thead>
         <tr>
+          <th class="col-serial">#</th>
           <th class="col-name sort-col" data-col="name"><a class="th-sort" href="/documents?{{.SortURL "name"}}" hx-get="/documents/list?{{.SortURL "name"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Name<span class="sort-arrow {{if eq .SortBy "name"}}active {{.SortDir}}{{end}}"></span></a></th>
           <th class="col-type sort-col" data-col="type"><a class="th-sort" href="/documents?{{.SortURL "type"}}" hx-get="/documents/list?{{.SortURL "type"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Type<span class="sort-arrow {{if eq .SortBy "type"}}active {{.SortDir}}{{end}}"></span></a></th>
           <th>Tags</th>
@@ -49,25 +50,26 @@
         </tr>
       </thead>
       <tbody>
-        {{range .Documents}}
+        {{range $i, $doc := .Documents}}
         <tr>
+          <td class="cell-muted col-serial">{{add $.ShowFrom $i}}</td>
           <td>
-            <a class="doc-link" href="{{.MessageLink}}" target="_blank" rel="noopener" title="{{.FileName}} — opens in Telegram">
-              <span class="doc-icon ext-{{lower .Extension}}">{{if .Extension}}{{extUpper .Extension}}{{else}}DOC{{end}}</span>
-              <span class="doc-name">{{.FileName}}</span>
+            <a class="doc-link" href="{{$doc.MessageLink}}" target="_blank" rel="noopener" title="{{$doc.FileName}} — opens in Telegram">
+              <span class="doc-icon ext-{{lower $doc.Extension}}">{{if $doc.Extension}}{{extUpper $doc.Extension}}{{else}}DOC{{end}}</span>
+              <span class="doc-name">{{$doc.FileName}}</span>
             </a>
           </td>
           <td class="cell-muted col-type">
-            {{if .MimeType}}{{.MimeType}}{{else}}{{if .Extension}}.{{.Extension}}{{else}}unknown{{end}}{{end}}
+            {{if $doc.MimeType}}{{$doc.MimeType}}{{else}}{{if $doc.Extension}}.{{$doc.Extension}}{{else}}unknown{{end}}{{end}}
           </td>
           <td>
             <div class="cell-tags">
-              {{range .Tags}}<span class="chip" style="--tag: {{.Color}}"><span class="pill-dot"></span>{{.Name}}</span>{{end}}
-              {{if not .Tags}}<span class="chip chip-plain">untagged</span>{{end}}
+              {{range $doc.Tags}}<span class="chip" style="--tag: {{.Color}}"><span class="pill-dot"></span>{{.Name}}</span>{{end}}
+              {{if not $doc.Tags}}<span class="chip chip-plain">untagged</span>{{end}}
             </div>
           </td>
-          <td class="cell-muted col-date">{{fmtDate .UploadedAt}}</td>
-          <td class="cell-muted col-size">{{fmtSize .FileSize}}</td>
+          <td class="cell-muted col-date">{{fmtDate $doc.UploadedAt}}</td>
+          <td class="cell-muted col-size">{{fmtSize $doc.FileSize}}</td>
         </tr>
         {{end}}
       </tbody>
