@@ -379,7 +379,7 @@ func (s *Server) documentsData(r *http.Request) (documentsPage, error) {
 		sortDir = "desc"
 	}
 
-	perPage := 20
+	perPage := 10
 	switch q.Get("per_page") {
 	case "10", "20", "50", "100":
 		perPage, _ = strconv.Atoi(q.Get("per_page"))
