@@ -1,18 +1,10 @@
 services:
   teledoc:
-    build: .
+    image: ghcr.io/driftywinds/teledoc:latest
     restart: unless-stopped
     ports:
       - "9879:9879"
-    environment:
-      # Required: token from @BotFather
-      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN in .env}
-      # Optional: set to require a password on the web UI
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      DB_PATH: /data/teledoc.db
-      LISTEN_ADDR: :9879
+    env_file:
+      - .env
     volumes:
-      - teledoc-data:/data
-
-volumes:
-  teledoc-data:
+      - ./data:/data
