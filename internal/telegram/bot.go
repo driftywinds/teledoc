@@ -20,8 +20,8 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
-	"tgarchive/internal/rules"
-	"tgarchive/internal/store"
+	"teledoc/internal/rules"
+	"teledoc/internal/store"
 )
 
 // Bot wraps the Telegram client and the ingestion pipeline.
@@ -65,8 +65,12 @@ func New(token string, st *store.Store, engine *rules.Engine, logger *log.Logger
 		Proxy:                 http.ProxyFromEnvironment, // honors HTTP(S)_PROXY vars
 		DialContext:           dialer.DialContext,
 		TLSHandshakeTimeout:   15 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second,
-		ForceAttemptHTTP2:     true,
+		// Long polling holds each getUpdates request open for ~59s. A header
+		// timeout shorter than that causes periodic "timeout awaiting response
+		// headers" churn (seen in the wild), so there is no header timeout;
+		// the client-level timeout below is the dead-connection safety net.
+		ResponseHeaderTimeout: 0,
+		ForceAttemptHTTP2:     false, // plain HTTP/1.1: h2 + proxies break long polls
 		MaxIdleConns:          10,
 		IdleConnTimeout:       90 * time.Second,
 	}
@@ -80,6 +84,7 @@ func New(token string, st *store.Store, engine *rules.Engine, logger *log.Logger
 		bot.WithNotAsyncHandlers(), // serialize ingestion; SQLite is single-writer anyway
 		bot.WithHTTPClient(time.Minute, httpClient),
 		bot.WithCheckInitTimeout(30 * time.Second),
+		bot.WithErrorsHandler(func(err error) { b.log.Printf("telegram: %v", err) }),
 	}
 	if base := os.Getenv("TELEGRAM_API_URL"); base != "" {
 		// Escape hatch for firewalled networks: point at a Bot API mirror or

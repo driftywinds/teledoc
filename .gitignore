@@ -1,7 +1,7 @@
 # --- Go ---
 # compiled binaries
-tgarchive
-tgarchive.exe
+teledoc
+teledoc.exe
 *.exe
 *.exe~
 *.test

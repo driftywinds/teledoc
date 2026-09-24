@@ -1,4 +1,4 @@
-# TG Archive
+# TeleDoc
 
 A Telegram-channel document archive with a [Papra](https://papra.app)-style web UI — written in Go, single binary, SQLite, no Node/TypeScript toolchain.
 
@@ -42,7 +42,7 @@ copy .env.example .env   # then edit: set BOT_TOKEN (and optionally ADMIN_PASSWO
 $env:BOT_TOKEN="123456:ABC..."; go run .
 
 # 3. Open the UI
-start http://localhost:8080
+start http://localhost:9879
 ```
 
 Get a bot token from [@BotFather](https://t.me/BotFather), then **add the bot to your channel as an administrator** with post-message permission.
@@ -51,10 +51,10 @@ Get a bot token from [@BotFather](https://t.me/BotFather), then **add the bot to
 
 ```bash
 cp .env.example .env    # set BOT_TOKEN (and optionally ADMIN_PASSWORD)
-docker compose up -d --build
+docker compose up -d --build   # UI on http://localhost:9879
 ```
 
-The SQLite database persists in the `tgarchive-data` volume at `/data/tgarchive.db`.
+The SQLite database persists in the `teledoc-data` volume at `/data/teledoc.db`.
 
 ## Configuration
 
@@ -62,8 +62,8 @@ The SQLite database persists in the `tgarchive-data` volume at `/data/tgarchive.
 |---|---|---|
 | `BOT_TOKEN` | — (required) | Bot token from @BotFather |
 | `ADMIN_PASSWORD` | *(empty)* | Web UI password; empty = no auth (trusted LAN only) |
-| `DB_PATH` | `tgarchive.db` | SQLite database location |
-| `LISTEN_ADDR` | `:8080` | Web UI listen address |
+| `DB_PATH` | `teledoc.db` | SQLite database location |
+| `LISTEN_ADDR` | `:9879` | Web UI listen address |
 
 ## Development
 

@@ -3,34 +3,37 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Title}} - TG Archive</title>
+<title>{{.Title}} - TeleDoc</title>
 <link rel="stylesheet" href="/static/app.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237c5cff' stroke-width='2'%3E%3Cpath d='M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z'/%3E%3Cpath d='M12 3v6l3-3-3-3z'/%3E%3C/svg%3E">
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+<link rel="icon" href="/static/logo.png" type="image/png">
+<link rel="apple-touch-icon" href="/static/logo.png">
 <script src="/static/htmx.min.js" defer></script>
+<script src="/static/app.js" defer></script>
 </head>
 <body>
 <div class="app">
   <aside class="sidebar">
     <a class="brand" href="/">
-      <span class="brand-mark">TG</span>
-      <span class="brand-name">Archive</span>
+      <span class="brand-mark">TD</span>
+      <span class="brand-name">TeleDoc</span>
     </a>
     <nav class="nav">
       <a href="/" class="nav-item{{if eq .Inner "page_documents"}} active{{end}}">
-        <span class="nav-ico">▤</span> Documents
+        <span class="nav-ico">▤</span> <span class="nav-label">Documents</span>
       </a>
       <a href="/tags" class="nav-item{{if eq .Inner "page_tags"}} active{{end}}">
-        <span class="nav-ico">◈</span> Tags
+        <span class="nav-ico">◈</span> <span class="nav-label">Tags</span>
       </a>
       <a href="/rules" class="nav-item{{if eq .Inner "page_rules"}} active{{end}}">
-        <span class="nav-ico">⚙</span> Tagging Rules
+        <span class="nav-ico">⚙</span> <span class="nav-label">Tagging Rules</span>
       </a>
     </nav>
     <div class="sidebar-footer">
       {{if .Password}}
       <form method="post" action="/logout"><button class="btn btn-ghost btn-sm" type="submit">Log out</button></form>
       {{end}}
-      <span class="muted">self-hosted archive</span>
+      <span class="muted">teledoc · self-hosted archive</span>
     </div>
   </aside>
   <main class="main">

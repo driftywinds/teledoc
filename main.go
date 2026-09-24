@@ -1,7 +1,7 @@
-// Command tgarchive is a Telegram-channel document archive with a Papra-style
+// Command teledoc is a Telegram-channel document archive with a Papra-style
 // web UI: documents posted to a Telegram channel are stored (metadata only)
 // in SQLite, auto-tagged by Papra-style tagging rules, and browsable at
-// http://localhost:8080 with links back to the original Telegram messages.
+// http://localhost:9879 with links back to the original Telegram messages.
 package main
 
 import (
@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"tgarchive/internal/rules"
-	"tgarchive/internal/store"
-	"tgarchive/internal/telegram"
-	"tgarchive/internal/web"
+	"teledoc/internal/rules"
+	"teledoc/internal/store"
+	"teledoc/internal/telegram"
+	"teledoc/internal/web"
 )
 
 func env(key, fallback string) string {
@@ -33,8 +33,8 @@ func main() {
 	if botToken == "" {
 		log.Fatal("BOT_TOKEN env var is required (get one from @BotFather)")
 	}
-	dbPath := env("DB_PATH", "tgarchive.db")
-	listenAddr := env("LISTEN_ADDR", ":8080")
+	dbPath := env("DB_PATH", "teledoc.db")
+	listenAddr := env("LISTEN_ADDR", ":9879")
 	adminPassword := os.Getenv("ADMIN_PASSWORD") // optional
 
 	st, err := store.New(dbPath)
@@ -48,24 +48,25 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	botAPI, err := telegram.New(botToken, st, engine, log.New(os.Stdout, "tg ", log.LstdFlags))
-	if err != nil {
-		log.Fatalf("telegram bot: %v", err)
-	}
-
+	// Start the web UI first so the archive is browsable even while the bot
+	// is retrying its Telegram connection.
 	srv := web.New(st, engine, adminPassword, log.New(os.Stdout, "web ", log.LstdFlags))
 	httpServer := &http.Server{
 		Addr:              listenAddr,
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-
 	go func() {
 		log.Printf("web UI listening on http://localhost%s", listenAddr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("web server: %v", err)
 		}
 	}()
+
+	botAPI, err := telegram.New(botToken, st, engine, log.New(os.Stdout, "tg ", log.LstdFlags))
+	if err != nil {
+		log.Fatalf("telegram bot: %v", err)
+	}
 
 	me := botAPI.Me(ctx)
 	log.Printf("bot %s polling for channel posts...", me)

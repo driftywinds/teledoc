@@ -21,7 +21,7 @@ import (
 	"log"
 	"strings"
 
-	"tgarchive/internal/store"
+	"teledoc/internal/store"
 )
 
 // Field getters: map a condition field name to the document property.

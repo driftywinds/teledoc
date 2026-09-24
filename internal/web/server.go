@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"tgarchive/internal/rules"
-	"tgarchive/internal/store"
+	"teledoc/internal/rules"
+	"teledoc/internal/store"
 )
 
 //go:embed templates/*.html
@@ -101,7 +101,7 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 }
 
 func (s *Server) validSession(r *http.Request) bool {
-	c, err := r.Cookie("tgarchive_session")
+	c, err := r.Cookie("teledoc_session")
 	if err != nil || c.Value == "" {
 		return false
 	}
@@ -126,7 +126,7 @@ func (s *Server) newSession(w http.ResponseWriter) {
 	s.sessions[id] = time.Now().Add(7 * 24 * time.Hour)
 	s.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{
-		Name:     "tgarchive_session",
+		Name:     "teledoc_session",
 		Value:    id,
 		Path:     "/",
 		HttpOnly: true,
@@ -158,7 +158,7 @@ func (s *Server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie("tgarchive_session"); err == nil {
+	if c, err := r.Cookie("teledoc_session"); err == nil {
 		s.mu.Lock()
 		delete(s.sessions, c.Value)
 		s.mu.Unlock()
@@ -476,7 +476,6 @@ func (s *Server) handleCreateRule(w http.ResponseWriter, r *http.Request) {
 	fields := r.PostForm["field"]
 	ops := r.PostForm["operator"]
 	values := r.PostForm["value"]
-	cases := map[string]bool{} // "caseSensitive" checkbox arrives only when checked; per-index below
 	for i := range values {
 		if i >= len(fields) || i >= len(ops) {
 			break
@@ -486,7 +485,6 @@ func (s *Server) handleCreateRule(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		cs := r.PostFormValue(fmt.Sprintf("case_%d", i)) == "on"
-		_ = cases
 		conds = append(conds, store.Condition{
 			Field: fields[i], Operator: ops[i], Value: value, CaseSensitive: cs,
 		})

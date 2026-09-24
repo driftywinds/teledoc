@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"tgarchive/internal/store"
+	"teledoc/internal/store"
 )
 
 func doc(name, ext, mime string) store.Document {
