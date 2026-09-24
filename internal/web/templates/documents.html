@@ -2,7 +2,7 @@
 <div class="page-header">
   <div>
     <h1>Documents</h1>
-    <p class="muted">{{.TotalDocs}} archived from your Telegram channel. Click a row to open it in Telegram.</p>
+    <p class="muted">Click a row to open it in Telegram. Sorting and filters apply to the whole archive.</p>
   </div>
 </div>
 
@@ -41,11 +41,11 @@
     <table class="doc-table">
       <thead>
         <tr>
-          <th>Name</th>
-          <th class="col-type">Type</th>
+          <th><a class="th-sort" href="/documents?{{.SortURL "name"}}">Name{{sortIndicator "name" .SortBy .SortDir}}</a></th>
+          <th class="col-type"><a class="th-sort" href="/documents?{{.SortURL "type"}}">Type{{sortIndicator "type" .SortBy .SortDir}}</a></th>
           <th>Tags</th>
-          <th class="col-date">Uploaded</th>
-          <th class="col-size">Size</th>
+          <th class="col-date"><a class="th-sort" href="/documents?{{.SortURL "date"}}">Uploaded{{sortIndicator "date" .SortBy .SortDir}}</a></th>
+          <th class="col-size"><a class="th-sort" href="/documents?{{.SortURL "size"}}">Size{{sortIndicator "size" .SortBy .SortDir}}</a></th>
         </tr>
       </thead>
       <tbody>
@@ -72,6 +72,31 @@
         {{end}}
       </tbody>
     </table>
+  </div>
+
+  <div class="table-footer">
+    <div class="per-page">
+      <span class="cell-muted">Rows per page</span>
+      {{$cur := .PerPage}}
+      {{range perPageOptions}}
+      <a class="pill pp {{if eq . $cur}}pill-active{{end}}" href="/documents?{{$.PerPageURL .}}">{{.}}</a>
+      {{end}}
+    </div>
+    <div class="pager">
+      <span class="cell-muted pager-info">Showing {{.ShowFrom}}–{{.ShowTo}} of {{.TotalDocs}}</span>
+      {{$p := .Page}}{{$tp := .TotalPages}}
+      <div class="pager-btns">
+      {{if gt $tp 1}}
+        <a class="btn btn-ghost btn-sm {{if eq $p 1}}is-disabled{{end}}" href="/documents?{{$.PageURL 1}}" {{if eq $p 1}}aria-disabled="true"{{end}}>«</a>
+        <a class="btn btn-ghost btn-sm {{if eq $p 1}}is-disabled{{end}}" href="/documents?{{$.PageURL (add $p -1)}}" {{if eq $p 1}}aria-disabled="true"{{end}}>‹</a>
+        <span class="pager-page">{{(add $p 0)}} / {{$tp}}</span>
+        <a class="btn btn-ghost btn-sm {{if eq $p $tp}}is-disabled{{end}}" href="/documents?{{$.PageURL (add $p 1)}}" {{if eq $p $tp}}aria-disabled="true"{{end}}>›</a>
+        <a class="btn btn-ghost btn-sm {{if eq $p $tp}}is-disabled{{end}}" href="/documents?{{$.PageURL $tp}}" {{if eq $p $tp}}aria-disabled="true"{{end}}>»</a>
+      {{else}}
+        <span class="pager-page">1 / 1</span>
+      {{end}}
+      </div>
+    </div>
   </div>
   {{else}}
   <div class="empty-state">

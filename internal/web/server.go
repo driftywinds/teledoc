@@ -198,10 +198,13 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 // Templates
 
 var funcMap = template.FuncMap{
-	"fmtSize":  humanSize,
-	"fmtDate":  func(t time.Time) string { return t.Format("Jan 2, 2006") },
-	"lower":    strings.ToLower,
-	"extUpper": func(s string) string { return strings.ToUpper(s) },
+	"fmtSize":       humanSize,
+	"fmtDate":       func(t time.Time) string { return t.Format("Jan 2, 2006") },
+	"lower":         strings.ToLower,
+	"extUpper":      func(s string) string { return strings.ToUpper(s) },
+	"sortIndicator": sortIndicator,
+	"add":           func(a, b int) int { return a + b },
+	"perPageOptions": func() []int { return []int{10, 20, 50, 100} },
 }
 
 func humanSize(n int64) string {
@@ -282,8 +285,79 @@ type documentsPage struct {
 	ActiveTags  map[int64]bool
 	Untagged    bool
 	TotalDocs   int
-	Sort        string
+	SortBy      string
+	SortDir     string
+	Page        int
+	PerPage     int
+	TotalPages  int
+	ShowFrom    int // 1-based index of first row on the page (for "showing X-Y of Z")
+	ShowTo      int
+	Q           url.Values // current query, for building sort/page links
 	CurrentTime time.Time
+}
+
+// sortIndicator returns the arrow for the currently sorted column.
+func sortIndicator(col, sortBy, sortDir string) string {
+	if col != sortBy {
+		return ""
+	}
+	if sortDir == "asc" {
+		return " ↑"
+	}
+	return " ↓"
+}
+
+// defaultSortDir is the direction a column gets on first click.
+var defaultSortDir = map[string]string{
+	"name": "asc",  // A-Z first
+	"type": "asc",  // A-Z first
+	"date": "desc", // newest first
+	"size": "desc", // largest first
+}
+
+func cloneValues(v url.Values) url.Values {
+	c := url.Values{}
+	for k, vs := range v {
+		c[k] = append([]string(nil), vs...)
+	}
+	return c
+}
+
+// SortURL is the querystring for sorting by col, toggling direction when it
+// is already the active sort. Sorting resets to page 1.
+func (p documentsPage) SortURL(col string) string {
+	q := cloneValues(p.Q)
+	dir := defaultSortDir[col]
+	if p.SortBy == col {
+		if p.SortDir == "asc" {
+			dir = "desc"
+		} else {
+			dir = "asc"
+		}
+	}
+	q.Set("sort", col)
+	q.Set("order", dir)
+	q.Del("page")
+	return q.Encode()
+}
+
+// PageURL is the querystring for the given page, keeping sort/filter state.
+func (p documentsPage) PageURL(page int) string {
+	q := cloneValues(p.Q)
+	if page <= 1 {
+		q.Del("page")
+	} else {
+		q.Set("page", strconv.Itoa(page))
+	}
+	return q.Encode()
+}
+
+// PerPageURL is the querystring for a different page size (resets to page 1).
+func (p documentsPage) PerPageURL(n int) string {
+	q := cloneValues(p.Q)
+	q.Set("per_page", strconv.Itoa(n))
+	q.Del("page")
+	return q.Encode()
 }
 
 func parseIDs(values []string) []int64 {
@@ -304,16 +378,46 @@ func (s *Server) documentsData(r *http.Request) (documentsPage, error) {
 	search := strings.TrimSpace(q.Get("q"))
 	tagIDs := parseIDs(q["tag"])
 	untagged := q.Get("untagged") == "1"
-	sort := q.Get("sort")
 
-	f := store.DocumentFilter{Search: search, TagIDs: tagIDs, Untagged: untagged}
-	switch sort {
-	case "name":
-		f.Limit = 500
+	sortBy := q.Get("sort")
+	switch sortBy {
+	case "name", "type", "size", "date":
 	default:
-		sort = "date"
+		sortBy = "date"
+	}
+	sortDir := q.Get("order")
+	if sortDir != "asc" {
+		sortDir = "desc"
 	}
 
+	perPage := 20
+	switch q.Get("per_page") {
+	case "10", "20", "50", "100":
+		perPage, _ = strconv.Atoi(q.Get("per_page"))
+	}
+	total, err := s.store.CountDocumentsFiltered(store.DocumentFilter{
+		Search: search, TagIDs: tagIDs, Untagged: untagged,
+	})
+	if err != nil {
+		return documentsPage{}, err
+	}
+	totalPages := (total + perPage - 1) / perPage
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	page := 1
+	if p, err := strconv.Atoi(q.Get("page")); err == nil && p > 0 {
+		page = p
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+
+	f := store.DocumentFilter{
+		Search: search, TagIDs: tagIDs, Untagged: untagged,
+		SortBy: sortBy, SortDir: sortDir,
+		Limit: perPage, Offset: (page - 1) * perPage,
+	}
 	docs, err := s.store.ListDocuments(f)
 	if err != nil {
 		return documentsPage{}, err
@@ -322,17 +426,22 @@ func (s *Server) documentsData(r *http.Request) (documentsPage, error) {
 	if err != nil {
 		return documentsPage{}, err
 	}
-	total, err := s.store.CountDocuments()
-	if err != nil {
-		return documentsPage{}, err
-	}
 	active := map[int64]bool{}
 	for _, id := range tagIDs {
 		active[id] = true
 	}
+	showFrom := (page-1)*perPage + 1
+	if total == 0 {
+		showFrom = 0
+	}
+	showTo := (page - 1)*perPage + len(docs)
 	return documentsPage{
 		Tags: tags, Documents: docs, Search: search,
-		ActiveTags: active, Untagged: untagged, TotalDocs: total, Sort: sort,
+		ActiveTags: active, Untagged: untagged, TotalDocs: total,
+		SortBy: sortBy, SortDir: sortDir,
+		Page: page, PerPage: perPage, TotalPages: totalPages,
+		ShowFrom: showFrom, ShowTo: showTo,
+		Q:           q,
 		CurrentTime: time.Now(),
 	}, nil
 }

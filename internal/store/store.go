@@ -164,19 +164,19 @@ func (s *Store) lastInsertID(res sql.Result) (int64, error) {
 		return 0, fmt.Errorf("last insert id: %w", err)
 	}
 	return id, nil
-}
-
-// DocumentFilter selects which documents ListDocuments returns.
+}// DocumentFilter selects which documents ListDocuments returns.
 type DocumentFilter struct {
 	Search   string  // substring match on file name
 	TagIDs   []int64 // documents having ANY of these tags
 	Untagged bool    // only documents with no tags
-	Limit    int
+	SortBy   string  // "name" | "type" | "date" (default) | "size"
+	SortDir  string  // "asc" | "desc" (default)
+	Limit    int     // page size; <=0 means no explicit limit (use a sane default at call sites)
+	Offset   int     // rows to skip for pagination
 }
 
-// ListDocuments returns documents matching the filter, newest first, each
-// with its tags.
-func (s *Store) ListDocuments(f DocumentFilter) ([]DocumentWithTags, error) {
+// buildDocumentWhere assembles the WHERE clause shared by listing and counting.
+func buildDocumentWhere(f DocumentFilter) (string, []any) {
 	where := []string{"1=1"}
 	args := []any{}
 	if f.Search != "" {
@@ -194,18 +194,48 @@ func (s *Store) ListDocuments(f DocumentFilter) ([]DocumentWithTags, error) {
 	if f.Untagged {
 		where = append(where, "id NOT IN (SELECT document_id FROM document_tags)")
 	}
+	return strings.Join(where, " AND "), args
+}
+
+// documentOrderBy maps a sort request to a safe ORDER BY expression
+// (white-listed; never interpolated from user input).
+func documentOrderBy(sortBy, sortDir string) string {
+	col := "uploaded_at"
+	switch sortBy {
+	case "name":
+		col = "file_name COLLATE NOCASE" // A-Z case-insensitively
+	case "type":
+		col = "extension COLLATE NOCASE"
+	case "size":
+		col = "file_size"
+	}
+	dir := "DESC"
+	if sortDir == "asc" {
+		dir = "ASC"
+	}
+	return col + " " + dir + ", id " + dir // stable tie-breaker
+}
+
+// ListDocuments returns documents matching the filter, sorted and paged,
+// each with its tags.
+func (s *Store) ListDocuments(f DocumentFilter) ([]DocumentWithTags, error) {
+	where, args := buildDocumentWhere(f)
+
 	limit := f.Limit
 	if limit <= 0 {
-		limit = 500
+		limit = 20
 	}
-	args = append(args, limit)
+	if f.Offset < 0 {
+		f.Offset = 0
+	}
+	args = append(args, limit, f.Offset)
 
 	rows, err := s.db.Query(`
 		SELECT id, file_name, mime_type, extension, file_size, chat_id, message_id, message_link, uploaded_at
 		FROM documents
-		WHERE `+strings.Join(where, " AND ")+`
-		ORDER BY uploaded_at DESC, id DESC
-		LIMIT ?`, args...)
+		WHERE `+where+`
+		ORDER BY `+documentOrderBy(f.SortBy, f.SortDir)+`
+		LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list documents: %w", err)
 	}
@@ -229,6 +259,14 @@ func (s *Store) ListDocuments(f DocumentFilter) ([]DocumentWithTags, error) {
 		return nil, err
 	}
 	return docs, nil
+}
+
+// CountDocumentsFiltered counts documents matching the filter (for pagination).
+func (s *Store) CountDocumentsFiltered(f DocumentFilter) (int, error) {
+	where, args := buildDocumentWhere(f)
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM documents WHERE `+where, args...).Scan(&n)
+	return n, err
 }
 
 func (s *Store) loadTagsForDocs(docs []DocumentWithTags) error {

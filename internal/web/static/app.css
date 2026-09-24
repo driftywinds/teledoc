@@ -379,10 +379,19 @@ select.input { appearance: auto; }
   text-transform: uppercase;
   color: var(--muted);
   background: var(--surface-2);
-  padding: var(--s3) var(--s4);
+  padding: 0;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
+
+.th-sort {
+  display: block;
+  padding: var(--s3) var(--s4);
+  color: inherit;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.th-sort:hover { color: var(--foreground); background: color-mix(in srgb, var(--primary) 10%, var(--surface-2)); }
+th:has(.th-sort:hover) { color: var(--foreground); }
 
 .doc-table tbody td {
   padding: var(--s3) var(--s4);
@@ -437,6 +446,40 @@ select.input { appearance: auto; }
 .cell-tags { display: flex; flex-wrap: wrap; gap: var(--s1); max-width: 260px; }
 
 .table-empty { padding: 0; }
+
+/* ---------- Table footer: per-page + pager ---------- */
+
+.table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--surface);
+}
+
+.per-page { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+
+.pill.pp {
+  cursor: pointer;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+}
+.pill.pp:hover { color: var(--foreground); }
+
+.pager { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.pager-info { font-size: 0.82rem; }
+.pager-btns { display: flex; align-items: center; gap: var(--s1); }
+.pager-page { font-size: 0.85rem; color: var(--muted); padding: 0 var(--s2); font-variant-numeric: tabular-nums; }
+
+.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
 
 /* ---------- Empty state ---------- */
 
