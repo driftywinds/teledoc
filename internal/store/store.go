@@ -366,6 +366,16 @@ func (s *Store) DeleteTag(id int64) error {
 	return err
 }
 
+// SetTagColor updates the color of a tag. It accepts any non-empty hex-ish
+// value; validation and normalization happen at the handler layer.
+func (s *Store) SetTagColor(id int64, color string) error {
+	if color == "" {
+		return fmt.Errorf("tag color is empty")
+	}
+	_, err := s.db.Exec(`UPDATE tags SET color = ? WHERE id = ?`, color, id)
+	return err
+}
+
 // ListTags returns all tags with their document counts.
 func (s *Store) ListTags() ([]Tag, error) {
 	rows, err := s.db.Query(`

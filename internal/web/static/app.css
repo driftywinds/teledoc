@@ -548,6 +548,37 @@ th:has(.th-sort:hover) { color: var(--foreground); }
 .tag-row .tag-open { color: var(--muted); font-size: 0.8rem; margin-left: auto; white-space: nowrap; }
 .tag-row .row-actions { display: flex; gap: var(--s2); }
 
+/* Tag colour picker */
+.tag-color-form {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.78rem;
+}
+.tag-color-picker {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+.tag-color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+.tag-color-picker::-webkit-color-swatch { border: none; border-radius: 50%; }
+.tag-color-hex {
+  width: 5.2em;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.tag-color-form:hover { border-color: color-mix(in srgb, var(--tag) 50%, var(--border)); }
+
 /* ---------- Rules page ---------- */
 
 .rule-builder { margin-bottom: var(--s6); }

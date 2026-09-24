@@ -19,6 +19,10 @@
       <span class="pill-dot"></span>{{.Name}}
     </a>
     <span class="muted">{{.Count}} document{{if ne .Count 1}}s{{end}}</span>
+    <form method="post" action="/tags/{{.ID}}/color" class="row-actions tag-color-form" title="Change the tag colour">
+      <input class="tag-color-picker" type="color" name="color" value="{{.Color}}" onchange="this.form.submit()">
+      <input class="tag-color-hex input" type="text" name="color" value="{{.Color}}" pattern="^#?[0-9a-fA-F]{6}$" title="Hex colour, e.g. #8b5cf6" maxlength="7" onchange="this.form.submit()">
+    </form>
     <span class="tag-open" aria-hidden="true">view documents →</span>
     <form method="post" action="/tags/{{.ID}}/delete" class="row-actions">
       <button class="btn btn-ghost btn-sm" type="submit">Delete</button>

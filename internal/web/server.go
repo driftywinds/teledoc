@@ -76,6 +76,7 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("GET /tags", s.handleTags)
 	protected.HandleFunc("POST /tags", s.handleCreateTag)
 	protected.HandleFunc("POST /tags/{id}/delete", s.handleDeleteTag)
+	protected.HandleFunc("POST /tags/{id}/color", s.handleSetTagColor)
 	protected.HandleFunc("GET /rules", s.handleRules)
 	protected.HandleFunc("POST /rules", s.handleCreateRule)
 	protected.HandleFunc("POST /rules/{id}/delete", s.handleDeleteRule)
@@ -522,6 +523,47 @@ func (s *Server) handleDeleteTag(w http.ResponseWriter, r *http.Request) {
 		setFlash(w, "Tag deleted.")
 	}
 	http.Redirect(w, r, "/tags", http.StatusSeeOther)
+}
+
+// handleSetTagColor updates a tag's colour from a 6-digit hex value such as
+// "#8b5cf6". It validates the input before persisting.
+func (s *Server) handleSetTagColor(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	color := normalizeHexColor(strings.TrimSpace(r.PostFormValue("color")))
+	if color == "" {
+		setFlash(w, "Please enter a valid hex colour (e.g. #8b5cf6).")
+		http.Redirect(w, r, "/tags", http.StatusSeeOther)
+		return
+	}
+	if err := s.store.SetTagColor(id, color); err != nil {
+		setFlash(w, "Could not update colour: "+err.Error())
+	} else {
+		setFlash(w, "Tag colour updated.")
+	}
+	http.Redirect(w, r, "/tags", http.StatusSeeOther)
+}
+
+// normalizeHexColor accepts "#rrggbb" or "rrggbb", uppercases the hex digits,
+// and returns a canonical "#rrggbb". Returns "" for anything else.
+func normalizeHexColor(s string) string {
+	s = strings.TrimPrefix(s, "#")
+	if len(s) != 6 {
+		return ""
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return ""
+		}
+	}
+	return "#" + strings.ToUpper(s)
 }
 
 // ---------------------------------------------------------------------------
