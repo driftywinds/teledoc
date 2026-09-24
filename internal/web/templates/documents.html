@@ -7,8 +7,8 @@
 </div>
 
 <form id="filter-form" class="filterbar"
-      hx-get="/documents/list" hx-target="#doc-table-wrap" hx-trigger="change, input delay:300ms from:find input, submit" hx-swap="outerHTML">
-  <input type="search" name="q" value="{{.Search}}" placeholder="Search documents..." class="input search-input" autocomplete="off">
+      hx-get="/documents/list" hx-target="#doc-table-wrap" hx-trigger="input delay:300ms from:#search-input, change from:.tag-filter" hx-swap="outerHTML" hx-push-url="true">
+  <input id="search-input" type="search" name="q" value="{{.Search}}" placeholder="Search documents..." class="input search-input" autocomplete="off">
   <div class="tag-filter" role="group" aria-label="Filter by tag">
     {{range .Tags}}
     <label class="pill {{if index $.ActiveTags .ID}}pill-active{{end}}" style="--tag: {{.Color}}">
@@ -38,14 +38,14 @@
 <div id="doc-table-wrap">
   {{if .Documents}}
   <div class="table-card">
-    <table class="doc-table">
+    <table class="doc-table" data-sort="{{.SortBy}}" data-dir="{{.SortDir}}">
       <thead>
         <tr>
-          <th><a class="th-sort" href="/documents?{{.SortURL "name"}}">Name{{sortIndicator "name" .SortBy .SortDir}}</a></th>
-          <th class="col-type"><a class="th-sort" href="/documents?{{.SortURL "type"}}">Type{{sortIndicator "type" .SortBy .SortDir}}</a></th>
+          <th class="col-name sort-col" data-col="name"><a class="th-sort" href="/documents?{{.SortURL "name"}}" hx-get="/documents/list?{{.SortURL "name"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Name<span class="sort-arrow {{if eq .SortBy "name"}}active {{.SortDir}}{{end}}"></span></a></th>
+          <th class="col-type sort-col" data-col="type"><a class="th-sort" href="/documents?{{.SortURL "type"}}" hx-get="/documents/list?{{.SortURL "type"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Type<span class="sort-arrow {{if eq .SortBy "type"}}active {{.SortDir}}{{end}}"></span></a></th>
           <th>Tags</th>
-          <th class="col-date"><a class="th-sort" href="/documents?{{.SortURL "date"}}">Uploaded{{sortIndicator "date" .SortBy .SortDir}}</a></th>
-          <th class="col-size"><a class="th-sort" href="/documents?{{.SortURL "size"}}">Size{{sortIndicator "size" .SortBy .SortDir}}</a></th>
+          <th class="col-date sort-col" data-col="date"><a class="th-sort" href="/documents?{{.SortURL "date"}}" hx-get="/documents/list?{{.SortURL "date"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Uploaded<span class="sort-arrow {{if eq .SortBy "date"}}active {{.SortDir}}{{end}}"></span></a></th>
+          <th class="col-size sort-col" data-col="size"><a class="th-sort" href="/documents?{{.SortURL "size"}}" hx-get="/documents/list?{{.SortURL "size"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Size<span class="sort-arrow {{if eq .SortBy "size"}}active {{.SortDir}}{{end}}"></span></a></th>
         </tr>
       </thead>
       <tbody>
@@ -77,21 +77,23 @@
   <div class="table-footer">
     <div class="per-page">
       <span class="cell-muted">Rows per page</span>
-      {{$cur := .PerPage}}
-      {{range perPageOptions}}
-      <a class="pill pp {{if eq . $cur}}pill-active{{end}}" href="/documents?{{$.PerPageURL .}}">{{.}}</a>
-      {{end}}
+      <select class="input per-page-select" name="per_page" hx-get="/documents/list" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true" hx-include="#filter-form">
+        <option value="10" {{if eq .PerPage 10}}selected{{end}}>10</option>
+        <option value="20" {{if eq .PerPage 20}}selected{{end}}>20</option>
+        <option value="50" {{if eq .PerPage 50}}selected{{end}}>50</option>
+        <option value="100" {{if eq .PerPage 100}}selected{{end}}>100</option>
+      </select>
     </div>
     <div class="pager">
       <span class="cell-muted pager-info">Showing {{.ShowFrom}}–{{.ShowTo}} of {{.TotalDocs}}</span>
       {{$p := .Page}}{{$tp := .TotalPages}}
       <div class="pager-btns">
       {{if gt $tp 1}}
-        <a class="btn btn-ghost btn-sm {{if eq $p 1}}is-disabled{{end}}" href="/documents?{{$.PageURL 1}}" {{if eq $p 1}}aria-disabled="true"{{end}}>«</a>
-        <a class="btn btn-ghost btn-sm {{if eq $p 1}}is-disabled{{end}}" href="/documents?{{$.PageURL (add $p -1)}}" {{if eq $p 1}}aria-disabled="true"{{end}}>‹</a>
+        <a class="btn btn-ghost btn-sm {{if eq $p 1}}is-disabled{{end}}" href="/documents?{{$.PageURL 1}}" hx-get="/documents/list?{{$.PageURL 1}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true" {{if eq $p 1}}aria-disabled="true"{{end}}>«</a>
+        <a class="btn btn-ghost btn-sm {{if eq $p 1}}is-disabled{{end}}" href="/documents?{{$.PageURL (add $p -1)}}" hx-get="/documents/list?{{$.PageURL (add $p -1)}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true" {{if eq $p 1}}aria-disabled="true"{{end}}>‹</a>
         <span class="pager-page">{{(add $p 0)}} / {{$tp}}</span>
-        <a class="btn btn-ghost btn-sm {{if eq $p $tp}}is-disabled{{end}}" href="/documents?{{$.PageURL (add $p 1)}}" {{if eq $p $tp}}aria-disabled="true"{{end}}>›</a>
-        <a class="btn btn-ghost btn-sm {{if eq $p $tp}}is-disabled{{end}}" href="/documents?{{$.PageURL $tp}}" {{if eq $p $tp}}aria-disabled="true"{{end}}>»</a>
+        <a class="btn btn-ghost btn-sm {{if eq $p $tp}}is-disabled{{end}}" href="/documents?{{$.PageURL (add $p 1)}}" hx-get="/documents/list?{{$.PageURL (add $p 1)}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true" {{if eq $p $tp}}aria-disabled="true"{{end}}>›</a>
+        <a class="btn btn-ghost btn-sm {{if eq $p $tp}}is-disabled{{end}}" href="/documents?{{$.PageURL $tp}}" hx-get="/documents/list?{{$.PageURL $tp}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true" {{if eq $p $tp}}aria-disabled="true"{{end}}>»</a>
       {{else}}
         <span class="pager-page">1 / 1</span>
       {{end}}

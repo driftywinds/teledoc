@@ -355,7 +355,7 @@ select.input { appearance: auto; }
   margin-bottom: var(--s5);
 }
 
-.search-input { max-width: 460px; width: 100%; }
+.search-input { width: 100%; }
 
 .tag-filter { display: flex; flex-wrap: wrap; gap: var(--s2); }
 
@@ -385,13 +385,48 @@ select.input { appearance: auto; }
 }
 
 .th-sort {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
   padding: var(--s3) var(--s4);
   color: inherit;
   transition: color 0.12s ease, background 0.12s ease;
+  cursor: pointer;
 }
 .th-sort:hover { color: var(--foreground); background: color-mix(in srgb, var(--primary) 10%, var(--surface-2)); }
 th:has(.th-sort:hover) { color: var(--foreground); }
+
+/* Sort arrow indicators — pure CSS, no text characters */
+.sort-arrow {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  opacity: 0.3;
+  margin-left: 2px;
+  vertical-align: middle;
+}
+.sort-arrow.active.asc {
+  border-bottom: 5px solid var(--foreground);
+  opacity: 1;
+}
+.sort-arrow.active.desc {
+  border-top: 5px solid var(--foreground);
+  opacity: 1;
+}
+.sort-arrow:not(.active) {
+  border-top: 5px solid var(--muted);
+}
+.sort-col:hover .sort-arrow:not(.active) {
+  opacity: 0.7;
+}
+
+/* Per-page select */
+.per-page-select {
+  min-width: 70px;
+  cursor: pointer;
+}
 
 .doc-table tbody td {
   padding: var(--s3) var(--s4);

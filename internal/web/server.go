@@ -198,13 +198,11 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 // Templates
 
 var funcMap = template.FuncMap{
-	"fmtSize":       humanSize,
-	"fmtDate":       func(t time.Time) string { return t.Format("Jan 2, 2006") },
-	"lower":         strings.ToLower,
-	"extUpper":      func(s string) string { return strings.ToUpper(s) },
-	"sortIndicator": sortIndicator,
-	"add":           func(a, b int) int { return a + b },
-	"perPageOptions": func() []int { return []int{10, 20, 50, 100} },
+	"fmtSize":  humanSize,
+	"fmtDate":  func(t time.Time) string { return t.Format("Jan 2, 2006") },
+	"lower":    strings.ToLower,
+	"extUpper": func(s string) string { return strings.ToUpper(s) },
+	"add":      func(a, b int) int { return a + b },
 }
 
 func humanSize(n int64) string {
@@ -294,17 +292,6 @@ type documentsPage struct {
 	ShowTo      int
 	Q           url.Values // current query, for building sort/page links
 	CurrentTime time.Time
-}
-
-// sortIndicator returns the arrow for the currently sorted column.
-func sortIndicator(col, sortBy, sortDir string) string {
-	if col != sortBy {
-		return ""
-	}
-	if sortDir == "asc" {
-		return " ↑"
-	}
-	return " ↓"
 }
 
 // defaultSortDir is the direction a column gets on first click.

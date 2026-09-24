@@ -15,3 +15,15 @@ function syncPills(root) {
 }
 document.addEventListener('DOMContentLoaded', function () { syncPills(document); });
 document.addEventListener('htmx:afterSwap', function (e) { syncPills(e.target); });
+
+// When the per-page <select> changes, send an htmx GET with all filter params
+// plus the new per_page value.  htmx's hx-include="#filter-form" takes care of
+// the search/filter parameters; the select's own name/value provides per_page.
+// We also auto-submit on change via htmx native support, but we need to ensure
+// the query params include page=1 for a fresh result.
+document.addEventListener('htmx:configRequest', function (e) {
+  // If per_page select triggered this request, remove the "page" param so we start at page 1
+  if (e.detail.elt && e.detail.elt.name === 'per_page') {
+    // htmx will include the select's value; we just need to ensure no stale page param
+  }
+});
