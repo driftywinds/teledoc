@@ -98,6 +98,34 @@ document.addEventListener('DOMContentLoaded', function () { syncBulkToolbar(docu
 document.addEventListener('htmx:afterSwap', function () { syncBulkToolbar(document); });
 
 // ---------------------------------------------------------------------------
+// Mobile scroll affordance: when the documents table is wider than its card
+// (phones), mark the card so CSS shows a right-edge fade hinting at more
+// content, and drop the fade once the user has scrolled to the end. Desktop
+// is unaffected: the fade is media-scoped in CSS and not-scrollable tables
+// never get the class.
+function updateDocTableScrollState() {
+  var scroller = document.querySelector('.doc-table-scroll');
+  var card = document.querySelector('.table-card');
+  if (!card) return;
+  if (!scroller) { card.classList.remove('is-scrollable', 'at-scroll-end'); return; }
+  // 1px tolerance: sub-pixel rounding makes scrollWidth > clientWidth by <1
+  // on some devices even when fully scrolled to the left.
+  var scrollable = scroller.scrollWidth - scroller.clientWidth > 1;
+  card.classList.toggle('is-scrollable', scrollable);
+  if (!scrollable) { card.classList.remove('at-scroll-end'); return; }
+  var atEnd = scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth - 1;
+  card.classList.toggle('at-scroll-end', atEnd);
+}
+document.addEventListener('DOMContentLoaded', updateDocTableScrollState);
+document.addEventListener('htmx:afterSwap', updateDocTableScrollState);
+document.addEventListener('scroll', function (e) {
+  if (e.target instanceof Element && e.target.closest('.doc-table-scroll')) {
+    updateDocTableScrollState();
+  }
+}, true);
+window.addEventListener('resize', updateDocTableScrollState);
+
+// ---------------------------------------------------------------------------
 // Bulk tagging: "Tag selected" opens a dropdown of tags to apply to every
 // selected row. Checkboxes inside the panel point at #bulk-tag-form via their
 // form= attribute, so the browser submits doc_ids + tags together.

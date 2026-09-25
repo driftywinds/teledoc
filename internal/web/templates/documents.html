@@ -109,7 +109,7 @@
             <td class="col-select">
               <input type="checkbox" class="row-select" name="doc_ids" value="{{$doc.ID}}" form="bulk-delete-form" aria-label="Select {{$doc.FileName}}">
             </td>
-            <td>
+            <td class="col-name">
               <a class="doc-link" href="{{$doc.MessageLink}}" target="_blank" rel="noopener" title="{{$doc.FileName}} — opens in Telegram">
                 <span class="doc-icon ext-{{lower $doc.Extension}}">{{if $doc.Extension}}{{extUpper $doc.Extension}}{{else}}DOC{{end}}</span>
                 <span class="doc-name">{{$doc.FileName}}</span>

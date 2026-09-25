@@ -1017,6 +1017,10 @@ th:has(.th-sort:hover) { color: var(--foreground); }
     max-width: none;
     min-width: 640px;               /* fallback */
     min-width: max(640px, 100%);    /* never narrower than its container */
+    /* collapse eats sticky cells' borders; separate + zero spacing renders
+       identically here but keeps the pinned lane's border visible. */
+    border-collapse: separate;
+    border-spacing: 0;
   }
   .doc-table thead th, .doc-table tbody td { padding: var(--s2) var(--s3); white-space: nowrap; }
   /* Auto layout sizes columns by content, so the desktop width:2.75rem on
@@ -1024,8 +1028,37 @@ th:has(.th-sort:hover) { color: var(--foreground); }
      min-width gives the lane a touch-friendly floor; header and row cells
      keep identical geometry (padding stays 0, checkbox stays centered). */
   .col-select { min-width: 3.25rem; }
-  .doc-name { max-width: 260px; }   /* keep huge filenames from stretching the table */
+  .doc-name { max-width: 230px; }   /* keep huge filenames from stretching the table */
   .cell-tags { max-width: none; }
+
+  /* Pinned lanes: checkbox + name stay visible while the rest swipes under.
+     Sticky cells need opaque backgrounds and their own hover styling (they
+     sit above the row's transparent background). Name offset = the select
+     lane's width; keep the two in sync. */
+  .doc-table th.col-select,
+  .doc-table td.col-select {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--surface);
+  }
+  .doc-table thead th.col-select { background: var(--surface-2); }
+  .doc-table tbody tr:hover td.col-select { background: var(--surface-2); }
+
+  .doc-table th.col-name,
+  .doc-table td.col-name {
+    position: sticky;
+    left: 3.25rem;
+    z-index: 2;
+    background: var(--surface);
+    box-shadow: 6px 0 8px -6px rgb(0 0 0 / 0.5);
+  }
+  .doc-table thead th.col-name { background: var(--surface-2); }
+  .doc-table tbody tr:hover td.col-name { background: var(--surface-2); }
+  /* No horizontal scroll (tablets that fit) → no shadow hint. Default (no
+     JS) keeps the shadow: it just reads as a column separator there. */
+  .table-card:not(.is-scrollable) .doc-table th.col-name,
+  .table-card:not(.is-scrollable) .doc-table td.col-name { box-shadow: none; }
 
   .condition-row { grid-template-columns: 1fr 1fr; }
   .condition-row .input[type="text"] { grid-column: 1 / -1; }
@@ -1051,6 +1084,30 @@ th:has(.th-sort:hover) { color: var(--foreground); }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
+}
+
+/* Right-edge scroll fade for the mobile documents table. Media-scoped so
+   desktop never renders it; the ::after sits above cells (z-index 3) but
+   below nothing else in the card. visibility:hidden by default = no stray
+   overlay if JS never marks the wrap. */
+@media (max-width: 900px) {
+  .table-card { position: relative; }
+  .table-card::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 28px;
+    pointer-events: none;
+    z-index: 3;
+    background: linear-gradient(to right, transparent, rgb(0 0 0 / 0.22));
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease;
+  }
+  .table-card.is-scrollable::after { visibility: visible; opacity: 1; }
+  .table-card.is-scrollable.at-scroll-end::after { opacity: 0; }
 }
 
 .noscript-filter { display: none; }
