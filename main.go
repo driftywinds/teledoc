@@ -7,9 +7,11 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,6 +26,29 @@ func env(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// lanIPs returns the non-loopback IPv4 addresses of this machine's active
+// network interfaces (e.g. 192.168.x.x), used to print phone-friendly URLs.
+func lanIPs() []string {
+	var out []string
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	for _, a := range addrs {
+		if ipn, ok := a.(*net.IPNet); ok && !ipn.IP.IsLoopback() {
+			if ip4 := ipn.IP.To4(); ip4 != nil {
+				// Skip link-local (169.254.x.x autoconfiguration) addresses —
+				// no phone can reach them, so they are just log noise.
+				if ip4.IsLinkLocalUnicast() {
+					continue
+				}
+				out = append(out, ip4.String())
+			}
+		}
+	}
+	return out
 }
 
 func main() {
@@ -58,6 +83,19 @@ func main() {
 	}
 	go func() {
 		log.Printf("web UI listening on http://localhost%s", listenAddr)
+		// An address like ":9879" (the default) already binds every interface,
+		// so the UI is reachable from other devices on the LAN, e.g. a phone.
+		port := listenAddr
+		if i := strings.LastIndex(port, ":"); i >= 0 {
+			port = port[i+1:]
+		}
+		if listenAddr == "localhost" || strings.HasPrefix(listenAddr, "localhost:") {
+			log.Printf("listening on localhost only; set LISTEN_ADDR=:%s to reach it from your phone", port)
+		} else {
+			for _, ip := range lanIPs() {
+				log.Printf("from your phone (same Wi-Fi): http://%s:%s", ip, port)
+			}
+		}
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("web server: %v", err)
 		}

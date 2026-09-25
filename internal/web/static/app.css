@@ -1006,9 +1006,25 @@ th:has(.th-sort:hover) { color: var(--foreground); }
   .page-header { flex-direction: column; align-items: flex-start; gap: var(--s2); margin-bottom: var(--s4); }
   .inline-form { flex-direction: column; align-items: stretch; }
 
-  /* Table condenses: name column flexes, secondary columns tighten */
-  .doc-table thead th, .doc-table tbody td { padding: var(--s2) var(--s3); }
-  .col-size, .col-type { display: none; }   /* keep name / tags / date */
+  /* Tables scroll instead of scrunching: switch to natural column widths
+     and give the table a floor wider than any phone, so the existing
+     .doc-table-scroll provides the horizontal swipe. All columns stay put.
+     Desktop above this breakpoint keeps the fixed layout untouched. */
+  .doc-table-scroll { -webkit-overflow-scrolling: touch; }
+  .doc-table {
+    table-layout: auto;
+    width: max-content;
+    max-width: none;
+    min-width: 640px;               /* fallback */
+    min-width: max(640px, 100%);    /* never narrower than its container */
+  }
+  .doc-table thead th, .doc-table tbody td { padding: var(--s2) var(--s3); white-space: nowrap; }
+  /* Auto layout sizes columns by content, so the desktop width:2.75rem on
+     .col-select is ignored and the checkbox lane collapses to ~16px. A
+     min-width gives the lane a touch-friendly floor; header and row cells
+     keep identical geometry (padding stays 0, checkbox stays centered). */
+  .col-select { min-width: 3.25rem; }
+  .doc-name { max-width: 260px; }   /* keep huge filenames from stretching the table */
   .cell-tags { max-width: none; }
 
   .condition-row { grid-template-columns: 1fr 1fr; }
@@ -1026,8 +1042,9 @@ th:has(.th-sort:hover) { color: var(--foreground); }
 
 @media (max-width: 480px) {
   .condition-row { grid-template-columns: 1fr; }
-  .col-date { display: none; }              /* name + tags only */
   .search-input { max-width: none; }
+  /* No column hiding on phones either — the table scrolls horizontally
+     as one unit (see the 900px block above). */
 }
 
 /* ---------- Motion preferences ---------- */
