@@ -64,8 +64,6 @@ The channel doubles as a status indicator: the bot reacts to each document messa
 | 👀 | Duplicate: a file with this name was already archived from the channel (case-insensitive) |
 | 🤔 | Archived, but tagging failed — needs attention (also flipped to on edit-time tagging failures) |
 
-Telegram restricts bot reactions to a fixed emoji whitelist, so first-choice glyphs like ✅ / ⚠️ / 🔁 are not available; these are the closest allowed equivalents.
-
 ## Run locally (Windows)
 
 ```powershell
