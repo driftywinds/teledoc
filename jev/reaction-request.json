@@ -1,0 +1,39 @@
+{
+  "state": "Teledoc: a self-hosted Telegram channel document archive. A bot watches a Telegram channel; every document posted there is archived into a local database with auto-tagging, browsable via a web UI. New feature: the bot reacts to the document message in the channel itself so the channel becomes a status indicator:\n- ARCHIVED: the document was archived successfully (normal case, most messages).\n- TAG_FAILURE: archiving succeeded but the tagging step failed (needs attention, rare).\n- DUPLICATE: a file with the same filename was already archived before from this channel (a reupload).\n\nHard constraint: Telegram bots may only react with a fixed whitelist of emoji. The requested emoji (check mark, warning sign, repeat) are NOT whitelisted, so we must pick the closest equivalents from this allowed list: \u2764 \ud83d\udc4d \ud83d\udc4e \ud83d\udd25 \ud83e\uddf0 \ud83d\udc4f \ud83d\ude01 \ud83e\udd14 \ud83e\udd2f \ud83d\ude31 \ud83e\udd2c \ud83d\ude22 \ud83c\udf89 \ud83e\udd29 \ud83e\udd2e \ud83d\udca9 \ud83d\ude4f \ud83d\udc4c \ud83d\udd4a \ud83e\udd21 \ud83e\udd71 \ud83e\udd74 \ud83d\ude0d \ud83d\udc33 \u2764\u200d\ud83d\udd25 \ud83c\udf1a \ud83c\udf2d \ud83d\udcaf \ud83e\udd23 \u26a1 \ud83c\udf4c \ud83c\udfc6 \ud83d\udc94 \ud83e\udd28 \ud83d\ude10 \ud83c\udf53 \ud83c\udf7e \ud83d\udc8b \ud83d\udd95 \ud83d\ude08 \ud83d\ude34 \ud83d\ude2d \ud83e\udd13 \ud83d\udc7b \ud83d\udc69\u200d\ud83d\udcbb \ud83d\udc40 \ud83c\udf83 \ud83d\ude48 \ud83d\ude07 \ud83d\ude28 \ud83e\udd1d \u270d \ud83e\udd17 \ud83e\udee1 \ud83c\udf85 \ud83c\udf84 \u2603 \ud83d\udc85 \ud83e\udd2a \ud83d\uddff \ud83c\udd92 \ud83d\udc98 \ud83d\ude49 \ud83e\udd84 \ud83d\ude18 \ud83d\udc8a \ud83d\ude4a \ud83d\ude0e \ud83d\udc7e \ud83e\udd37\u200d\u2642 \ud83e\udd37 \ud83e\udd37\u200d\u2640 \ud83d\ude21\n\nThe reaction should be instantly understandable next to a document in a channel, calm (not alarming) for the routine case, and distinct from the other two reactions so the three states are telling apart at a glance.",
+  "model": "jev-latest",
+  "questions": {
+    "emoji_archived": {
+      "type": "choice",
+      "instructions": "Which emoji should the bot react with when a document was ARCHIVED successfully (routine, most common event)? Pick the single best option.",
+      "criteria": {
+        "\ud83d\udc4d": "Universal calm 'done' signal; reads as 'ok, saved' without drama",
+        "\ud83d\udc4c": "Slightly playful 'all good'; less conventional for archives",
+        "\u26a1": "Conveys fast processing; energetic but less clearly 'success'",
+        "\ud83c\udd92": "Casual 'cool/all good'; fun but ambiguous",
+        "\ud83c\udf89": "Celebratory; reads as a special event rather than routine confirmation"
+      }
+    },
+    "emoji_tag_failure": {
+      "type": "choice",
+      "instructions": "Which emoji should the bot react with when archiving succeeded but TAGGING FAILED (rare, needs human attention, but not a disaster)? Pick the single best option.",
+      "criteria": {
+        "\ud83e\udd14": "Soft 'something needs attention'; readable as a warning without panic",
+        "\ud83d\udc40": "Reads as 'look at this' rather than 'error'",
+        "\ud83d\udc94": "Strongly negative, reads as broken/failed but emotionally exaggerated",
+        "\ud83d\ude48": "Playful 'I looked away / something went wrong'; meme-ish",
+        "\ud83d\ude31": "Alarming; reads as disaster rather than a routine tagging hiccup"
+      }
+    },
+    "emoji_duplicate": {
+      "type": "choice",
+      "instructions": "Which emoji should the bot react with when a DUPLICATE filename was reuploaded (the file was already archived before)? Pick the single best option.",
+      "criteria": {
+        "\ud83d\udc40": "Reads as 'already seen this before'; calm and informative",
+        "\ud83d\ude48": "Playful; ambiguous about meaning",
+        "\ud83d\ude01": "Cheerful; no clear 'duplicate' meaning",
+        "\ud83d\udc33": "Telegram in-joke; unclear meaning",
+        "\ud83e\udd2a": "Goofy; unclear meaning"
+      }
+    }
+  }
+}

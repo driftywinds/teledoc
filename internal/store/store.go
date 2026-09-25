@@ -158,6 +158,20 @@ func (s *Store) UpsertDocument(d Document) (int64, bool, error) {
 	return id, false, err
 }
 
+// HasDocumentWithFileName reports whether a document with the same file name
+// (case-insensitive) is already archived from the given chat by a DIFFERENT
+// message (excludeMessageID) — used to flag duplicate-filename reuploads.
+func (s *Store) HasDocumentWithFileName(chatID int64, fileName string, excludeMessageID int) (bool, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM documents WHERE chat_id = ? AND file_name COLLATE NOCASE = ? AND message_id != ?`,
+		chatID, fileName, excludeMessageID).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("check duplicate file name: %w", err)
+	}
+	return n > 0, nil
+}
+
 func (s *Store) lastInsertID(res sql.Result) (int64, error) {
 	id, err := res.LastInsertId()
 	if err != nil {

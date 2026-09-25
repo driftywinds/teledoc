@@ -62,9 +62,9 @@ func New(token string, st *store.Store, engine *rules.Engine, logger *log.Logger
 
 	dialer := &net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}
 	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment, // honors HTTP(S)_PROXY vars
-		DialContext:           dialer.DialContext,
-		TLSHandshakeTimeout:   15 * time.Second,
+		Proxy:               http.ProxyFromEnvironment, // honors HTTP(S)_PROXY vars
+		DialContext:         dialer.DialContext,
+		TLSHandshakeTimeout: 15 * time.Second,
 		// Long polling holds each getUpdates request open for ~59s. A header
 		// timeout shorter than that causes periodic "timeout awaiting response
 		// headers" churn (seen in the wild), so there is no header timeout;
@@ -129,6 +129,17 @@ func (b *Bot) Run(ctx context.Context) {
 	b.api.Start(ctx)
 }
 
+// Status reactions set on the document message itself, so the channel doubles
+// as an archive status indicator. Telegram restricts bot reactions to a fixed
+// emoji list; the first-choice glyphs (✅ / ⚠️ / 🔁) are not on it, so the
+// closest allowed equivalents are used
+// (https://core.telegram.org/bots/api#available-reactions).
+const (
+	reactArchived  = "👍" // document archived successfully
+	reactTagFailed = "🤔" // archived, but tagging failed — needs attention
+	reactDuplicate = "👀" // a file with this name was already archived before
+)
+
 // handleUpdate is the entry point for every Telegram update.
 func (b *Bot) handleUpdate(ctx context.Context, update *models.Update) {
 	msg := update.ChannelPost
@@ -138,13 +149,37 @@ func (b *Bot) handleUpdate(ctx context.Context, update *models.Update) {
 	if msg == nil || msg.Document == nil {
 		return
 	}
-	if err := b.ingest(ctx, msg); err != nil {
+
+	status, err := b.ingest(ctx, msg)
+	if err != nil {
 		b.log.Printf("telegram: ingest message %d in chat %d: %v", msg.ID, msg.Chat.ID, err)
+		// Archiving or tagging failed: flag the message so the channel
+		// itself shows that it needs attention.
+		b.react(ctx, msg.Chat.ID, msg.ID, reactTagFailed)
+		return
+	}
+	switch status {
+	case ingestDuplicateFileName:
+		b.react(ctx, msg.Chat.ID, msg.ID, reactDuplicate)
+	case ingestArchived:
+		b.react(ctx, msg.Chat.ID, msg.ID, reactArchived)
+	default: // ingestAlreadyArchived: redelivery of an archived message;
+		// its reaction was already set on first delivery.
 	}
 }
 
-// ingest archives one document post and applies the tagging rules.
-func (b *Bot) ingest(ctx context.Context, msg *models.Message) error {
+// ingestStatus tells handleUpdate which reaction the document message earned.
+type ingestStatus int
+
+const (
+	ingestArchived          ingestStatus = iota // archived (zero or more tags applied)
+	ingestDuplicateFileName                     // archived, but a file with the same name was archived before
+	ingestAlreadyArchived                       // duplicate delivery of an already-archived message
+)
+
+// ingest archives one document post and applies the tagging rules. A non-nil
+// error means archiving or tagging failed.
+func (b *Bot) ingest(ctx context.Context, msg *models.Message) (ingestStatus, error) {
 	doc := msg.Document
 
 	fileName := doc.FileName
@@ -171,26 +206,56 @@ func (b *Bot) ingest(ctx context.Context, msg *models.Message) error {
 		UploadedAt:  uploadedAt,
 	}
 
+	// Duplicate-filename check runs before the insert and excludes this very
+	// message, so a reupload is flagged while a redelivery of the same
+	// message is not.
+	dup, err := b.store.HasDocumentWithFileName(msg.Chat.ID, fileName, msg.ID)
+	if err != nil {
+		// The duplicate flag is cosmetic; never block archiving on it.
+		b.log.Printf("telegram: duplicate check for %q: %v", fileName, err)
+	}
+
 	id, created, err := b.store.UpsertDocument(stored)
 	if err != nil {
-		return fmt.Errorf("store document: %w", err)
+		return ingestArchived, fmt.Errorf("store document: %w", err)
 	}
 	if !created {
-		return nil // duplicate delivery (e.g. bot restart overlap); already archived
+		return ingestAlreadyArchived, nil // duplicate delivery (e.g. bot restart overlap); already archived
 	}
 	stored.ID = id
 
 	added, err := b.engine.ApplyRulesToDocument(stored)
 	if err != nil {
-		b.log.Printf("rules: document %q archived but tagging failed: %v", fileName, err)
+		return ingestArchived, fmt.Errorf("tag %q: %w", fileName, err)
 	}
+
 	if len(added) > 0 {
 		b.log.Printf("archived %q (%s, %d bytes) -> +%d tag(s) [msg %d]",
 			fileName, mimeType, doc.FileSize, len(added), msg.ID)
 	} else {
 		b.log.Printf("archived %q (%s, %d bytes) [msg %d]", fileName, mimeType, doc.FileSize, msg.ID)
 	}
-	return nil
+	if dup {
+		b.log.Printf("telegram: %q was already archived from this channel (duplicate reupload)", fileName)
+		return ingestDuplicateFileName, nil
+	}
+	return ingestArchived, nil
+}
+
+// react sets a single emoji reaction on the document message. Failures are
+// logged and swallowed: a status reaction must never break ingestion.
+func (b *Bot) react(ctx context.Context, chatID int64, messageID int, emoji string) {
+	_, err := b.api.SetMessageReaction(ctx, &bot.SetMessageReactionParams{
+		ChatID:    chatID,
+		MessageID: messageID,
+		Reaction: []models.ReactionType{{
+			Type:              models.ReactionTypeTypeEmoji,
+			ReactionTypeEmoji: &models.ReactionTypeEmoji{Emoji: emoji},
+		}},
+	})
+	if err != nil {
+		b.log.Printf("telegram: set reaction %q on message %d in chat %d: %v", emoji, messageID, chatID, err)
+	}
 }
 
 // messageLink builds the t.me link for a channel/group message:
