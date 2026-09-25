@@ -1,0 +1,23 @@
+{
+  "state": "Teledoc: a self-hosted Telegram channel document archive. A bot watches a Telegram channel; every document posted there is archived into a local SQLite database with auto-tagging, browsable via a web UI. Documents can carry a caption; #hashtags in the caption tag the document directly on upload (bypassing rules). A status-reaction feature reacts to the document message: thumbs-up = archived cleanly, eyes = duplicate filename reupload, thinking-face = archiving-or-tagging failed (needs attention).\n\nFeature being implemented (design already fixed by the user): when a channel post's caption is EDITED after posting (adds a hashtag, fixes a typo), the bot re-runs caption-hashtag tagging on that message. Tagging is strictly ADD-ONLY: an edit can never remove a tag; tag removal happens only via the web UI. Re-applying a hashtag that is already on the document is a no-op (idempotent), so editing to fix an unrelated typo cannot change tags, and removing a hashtag from the caption leaves existing tags untouched.\n\nTechnical background: Telegram only delivers edits if the bot subscribes to edited_channel_post / edited_message updates. An edited post carries the full message including the document and new caption. The archived document is looked up by (chat_id, message_id). Caption edits cannot change the rules-engine outcome: rules only match on file name, extension and mime type, none of which an edit can alter, so only hashtags need re-processing. Documents posted before the bot was added are not in the archive; a document deleted via the web UI is also not in the archive.",
+  "model": "jev-latest",
+  "questions": {
+    "unknown_message_edit": {
+      "type": "choice",
+      "instructions": "The bot receives an edit for a document post that is NOT in the archive (it predates the bot, or the user deleted it from the web UI). What should the edit handler do? Pick one.",
+      "criteria": {
+        "ignore": "Ignore the edit silently: only already-archived documents get re-tagged; deletion via the web UI stays authoritative and nothing is resurrected.",
+        "archive_and_tag": "Archive it now (the update carries full document metadata) and apply its hashtags: recovers documents the bot missed, but resurrects documents the user explicitly deleted from the archive."
+      }
+    },
+    "edit_reaction": {
+      "type": "choice",
+      "instructions": "The bot re-tags after a caption edit. What should happen to the message's status reaction (which currently shows the state from upload time, e.g. thumbs-up)? Pick one. Background: setMessageReaction replaces the bot's single previous reaction on that message.",
+      "criteria": {
+        "leave_on_success_flag_on_failure": "On success (or nothing-to-add): leave the existing reaction untouched — archive state did not change. On failure (database error applying hashtags): switch to thinking-face so the channel flags the message needs attention.",
+        "always_reassert": "Re-assert the archived thumbs-up after every successful edit: confirms the bot processed the edit, but the emoji never visibly changes so it communicates nothing new.",
+        "never_touch": "Never touch the reaction on edits, even on failure: failures are only visible in logs, keeping the reaction purely an upload-time status."
+      }
+    }
+  }
+}

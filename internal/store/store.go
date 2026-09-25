@@ -172,6 +172,26 @@ func (s *Store) HasDocumentWithFileName(chatID int64, fileName string, excludeMe
 	return n > 0, nil
 }
 
+// DocumentByMessage returns the archived document for a Telegram
+// (chat_id, message_id) pair, or sql.ErrNoRows when that message is not in
+// the archive.
+func (s *Store) DocumentByMessage(chatID int64, messageID int) (Document, error) {
+	var d Document
+	var ts int64
+	err := s.db.QueryRow(`
+		SELECT id, file_name, mime_type, extension, file_size, chat_id, message_id, message_link, uploaded_at
+		FROM documents WHERE chat_id = ? AND message_id = ?`, chatID, messageID).
+		Scan(&d.ID, &d.FileName, &d.MimeType, &d.Extension, &d.FileSize, &d.ChatID, &d.MessageID, &d.MessageLink, &ts)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return Document{}, err
+		}
+		return Document{}, fmt.Errorf("find document by message: %w", err)
+	}
+	d.UploadedAt = time.Unix(ts, 0)
+	return d, nil
+}
+
 func (s *Store) lastInsertID(res sql.Result) (int64, error) {
 	id, err := res.LastInsertId()
 	if err != nil {

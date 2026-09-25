@@ -1,10 +1,17 @@
 package telegram
 
 import (
+	"context"
+	"io"
+	"log"
+	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/go-telegram/bot/models"
+
+	"teledoc/internal/rules"
+	"teledoc/internal/store"
 )
 
 func entity(t models.MessageEntityType, offset, length int) models.MessageEntity {
@@ -101,5 +108,97 @@ func TestHashtagEntities(t *testing.T) {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// Feature 5: editing a document post's caption re-runs hashtag tagging on
+// the archived document. Tagging is strictly add-only — an edit can never
+// remove a tag — and edits of documents that are not in the archive are
+// ignored rather than resurrecting them.
+func TestHandleEditCaptionRetags(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	b := &Bot{
+		store:     st,
+		engine:    rules.New(st, nil),
+		log:       log.New(io.Discard, "", 0),
+		usernames: map[int64]string{},
+	}
+	// Username set so ingest's message-link builder never calls the Telegram API.
+	chat := models.Chat{ID: -100, Username: "testchannel"}
+
+	// Upload with a captioned hashtag.
+	msg := models.Message{
+		ID:              7,
+		Chat:            chat,
+		Document:        &models.Document{FileName: "a.pdf", FileSize: 10},
+		Caption:         "report #work",
+		CaptionEntities: []models.MessageEntity{entity(models.MessageEntityTypeHashtag, 7, 5)},
+	}
+	status, err := b.ingest(context.Background(), &msg)
+	if err != nil || status != ingestArchived {
+		t.Fatalf("ingest: status=%v err=%v", status, err)
+	}
+	doc, err := st.DocumentByMessage(-100, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tagNames := func() map[string]bool {
+		t.Helper()
+		tags, err := st.DocumentTags(doc.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		names := map[string]bool{}
+		for _, tg := range tags {
+			names[tg.Name] = true
+		}
+		return names
+	}
+	if got := tagNames(); !reflect.DeepEqual(got, map[string]bool{"work": true}) {
+		t.Fatalf("after upload: got %v", got)
+	}
+
+	// Edit adds a second hashtag; the first stays applied.
+	msg.Caption = "quarterly report #work #finance"
+	msg.CaptionEntities = []models.MessageEntity{
+		entity(models.MessageEntityTypeHashtag, 17, 5),
+		entity(models.MessageEntityTypeHashtag, 23, 8),
+	}
+	b.handleEdit(context.Background(), &msg)
+	if got := tagNames(); !reflect.DeepEqual(got, map[string]bool{"work": true, "finance": true}) {
+		t.Fatalf("after edit: got %v", got)
+	}
+
+	// Edit that removes the hashtags: tags are add-only and must remain.
+	msg.Caption = "quarterly report"
+	msg.CaptionEntities = nil
+	b.handleEdit(context.Background(), &msg)
+	if got := tagNames(); !reflect.DeepEqual(got, map[string]bool{"work": true, "finance": true}) {
+		t.Fatalf("after hashtag-removing edit: got %v", got)
+	}
+
+	// An edit for a document that is not archived is ignored: no new tag.
+	other := models.Message{
+		ID:              9,
+		Chat:            chat,
+		Document:        &models.Document{FileName: "never-archived.pdf"},
+		Caption:         "#nope",
+		CaptionEntities: []models.MessageEntity{entity(models.MessageEntityTypeHashtag, 0, 5)},
+	}
+	b.handleEdit(context.Background(), &other)
+	all, err := st.ListTags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tg := range all {
+		if tg.Name == "nope" {
+			t.Fatalf("edit of unarchived document was not ignored: tag %q exists", tg.Name)
+		}
 	}
 }

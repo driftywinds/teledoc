@@ -6,6 +6,8 @@ package telegram
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"mime"
@@ -81,7 +83,7 @@ func New(token string, st *store.Store, engine *rules.Engine, logger *log.Logger
 		bot.WithDefaultHandler(func(ctx context.Context, _ *bot.Bot, update *models.Update) {
 			b.handleUpdate(ctx, update)
 		}),
-		bot.WithAllowedUpdates(bot.AllowedUpdates{"message", "channel_post"}),
+		bot.WithAllowedUpdates(bot.AllowedUpdates{"message", "channel_post", "edited_message", "edited_channel_post"}),
 		bot.WithNotAsyncHandlers(), // serialize ingestion; SQLite is single-writer anyway
 		bot.WithHTTPClient(time.Minute, httpClient),
 		bot.WithCheckInitTimeout(30 * time.Second),
@@ -173,6 +175,15 @@ func hashtagEntities(caption string, entities []models.MessageEntity) []string {
 
 // handleUpdate is the entry point for every Telegram update.
 func (b *Bot) handleUpdate(ctx context.Context, update *models.Update) {
+	// Caption edits re-run tagging (add-only) on the archived document.
+	switch {
+	case update.EditedChannelPost != nil:
+		b.handleEdit(ctx, update.EditedChannelPost)
+		return
+	case update.EditedMessage != nil:
+		b.handleEdit(ctx, update.EditedMessage)
+		return
+	}
 	msg := update.ChannelPost
 	if msg == nil {
 		msg = update.Message // also accepts documents posted in groups
@@ -256,30 +267,9 @@ func (b *Bot) ingest(ctx context.Context, msg *models.Message) (ingestStatus, er
 	stored.ID = id
 
 	// Caption hashtags tag the document directly, bypassing the rules engine
-	// entirely (Telegram-native tagging): an existing tag wins regardless of
-	// its casing (EnsureTag resolves case-insensitively), otherwise a new tag
-	// is created. A failure here fails the whole tagging step, so the channel
-	// shows the needs-attention reaction.
-	var tagErr error
-	hts := hashtagEntities(msg.Caption, msg.CaptionEntities)
-	if len(hts) > 0 {
-		b.log.Printf("telegram: caption hashtags on %q: %s", fileName, strings.Join(hts, " "))
-		for _, ht := range hts {
-			name := strings.TrimPrefix(ht, "#")
-			if name == "" {
-				continue
-			}
-			tagID, err := b.store.EnsureTag(name)
-			if err != nil {
-				tagErr = fmt.Errorf("ensure caption tag %q: %w", name, err)
-				break
-			}
-			if _, err := b.store.AddTagToDocument(stored.ID, tagID); err != nil {
-				tagErr = fmt.Errorf("apply caption tag %q: %w", name, err)
-				break
-			}
-		}
-	}
+	// entirely (Telegram-native tagging). A failure here fails the whole
+	// tagging step, so the channel shows the needs-attention reaction.
+	tagErr := b.applyCaptionHashtags(stored.ID, msg)
 
 	added, err := b.engine.ApplyRulesToDocument(stored)
 	if tagErr == nil {
@@ -300,6 +290,61 @@ func (b *Bot) ingest(ctx context.Context, msg *models.Message) (ingestStatus, er
 		return ingestDuplicateFileName, nil
 	}
 	return ingestArchived, nil
+}
+
+// handleEdit re-runs caption-hashtag tagging when a document post's caption
+// is edited (adds a hashtag, fixes a typo). Tagging is strictly add-only: an
+// edit never removes a tag — removal is a web-UI action. Edits to non-
+// document posts, and edits of documents that are not in the archive (posted
+// before the bot joined, or deleted via the web UI — deletion stays
+// authoritative), are ignored. On success the existing status reaction is
+// left untouched; on failure it flips to the needs-attention reaction.
+func (b *Bot) handleEdit(ctx context.Context, msg *models.Message) {
+	if msg == nil || msg.Document == nil {
+		return // caption edits on non-document posts never affect tags
+	}
+	doc, err := b.store.DocumentByMessage(msg.Chat.ID, msg.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		b.log.Printf("telegram: edit of message %d in chat %d: not archived, ignoring", msg.ID, msg.Chat.ID)
+		return
+	}
+	if err != nil {
+		b.log.Printf("telegram: edit lookup message %d in chat %d: %v", msg.ID, msg.Chat.ID, err)
+		b.react(ctx, msg.Chat.ID, msg.ID, reactTagFailed)
+		return
+	}
+	if err := b.applyCaptionHashtags(doc.ID, msg); err != nil {
+		b.log.Printf("telegram: re-tag message %d in chat %d: %v", msg.ID, msg.Chat.ID, err)
+		b.react(ctx, msg.Chat.ID, msg.ID, reactTagFailed)
+	}
+}
+
+// applyCaptionHashtags applies a message's caption #hashtags to a document,
+// bypassing the rules engine entirely (Telegram-native tagging). Each tag is
+// resolved case-insensitively — an existing tag wins whatever its casing,
+// otherwise a new tag is created (lowercased). Idempotent: re-applying a tag
+// the document already has is a no-op, which makes caption edits add-only by
+// construction. Returns nil when the caption carries no hashtags.
+func (b *Bot) applyCaptionHashtags(docID int64, msg *models.Message) error {
+	hts := hashtagEntities(msg.Caption, msg.CaptionEntities)
+	if len(hts) == 0 {
+		return nil
+	}
+	b.log.Printf("telegram: caption hashtags: %s", strings.Join(hts, " "))
+	for _, ht := range hts {
+		name := strings.TrimPrefix(ht, "#")
+		if name == "" {
+			continue
+		}
+		tagID, err := b.store.EnsureTag(name)
+		if err != nil {
+			return fmt.Errorf("ensure caption tag %q: %w", name, err)
+		}
+		if _, err := b.store.AddTagToDocument(docID, tagID); err != nil {
+			return fmt.Errorf("apply caption tag %q: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // react sets a single emoji reaction on the document message. Failures are

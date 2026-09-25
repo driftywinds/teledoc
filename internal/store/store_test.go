@@ -1,6 +1,8 @@
 package store
 
 import (
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -93,5 +95,38 @@ func TestEnsureTagCaseInsensitive(t *testing.T) {
 	}
 	if name != "invoices" {
 		t.Fatalf("new tag stored as %q, want %q", name, "invoices")
+	}
+}
+
+// DocumentByMessage resolves (chat_id, message_id) -> archived document and
+// must surface sql.ErrNoRows for messages that are not archived (feature 5
+// relies on that sentinel to ignore edits of unarchived documents).
+func TestDocumentByMessage(t *testing.T) {
+	st, err := New(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	id, created, err := st.UpsertDocument(Document{
+		FileName: "a.pdf", ChatID: -100, MessageID: 5, MessageLink: "l", UploadedAt: time.Now(),
+	})
+	if err != nil || !created {
+		t.Fatalf("upsert: created=%v err=%v", created, err)
+	}
+
+	got, err := st.DocumentByMessage(-100, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != id || got.FileName != "a.pdf" || got.ChatID != -100 || got.MessageID != 5 {
+		t.Fatalf("got %+v", got)
+	}
+	if got.UploadedAt.IsZero() {
+		t.Fatal("uploaded_at not populated")
+	}
+
+	if _, err := st.DocumentByMessage(-100, 6); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected sql.ErrNoRows for unarchived message, got %v", err)
 	}
 }
