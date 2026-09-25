@@ -38,49 +38,55 @@
 <div id="doc-table-wrap">
   {{if .Documents}}
   <div class="table-card">
-    <table class="doc-table" data-sort="{{.SortBy}}" data-dir="{{.SortDir}}">
-      <thead>
-        <tr>
-          <th class="col-serial col-serial-header">#</th>
-          <th class="col-name sort-col" data-col="name"><a class="th-sort" href="/documents?{{.SortURL "name"}}" hx-get="/documents/list?{{.SortURL "name"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Name<span class="sort-arrow {{if eq .SortBy "name"}}active {{.SortDir}}{{end}}"></span></a></th>
-          <th class="col-type sort-col" data-col="type"><a class="th-sort" href="/documents?{{.SortURL "type"}}" hx-get="/documents/list?{{.SortURL "type"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Type<span class="sort-arrow {{if eq .SortBy "type"}}active {{.SortDir}}{{end}}"></span></a></th>
-          <th class="col-tags">Tags</th>
-          <th class="col-date sort-col" data-col="date"><a class="th-sort" href="/documents?{{.SortURL "date"}}" hx-get="/documents/list?{{.SortURL "date"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Uploaded<span class="sort-arrow {{if eq .SortBy "date"}}active {{.SortDir}}{{end}}"></span></a></th>
-          <th class="col-size sort-col" data-col="size"><a class="th-sort" href="/documents?{{.SortURL "size"}}" hx-get="/documents/list?{{.SortURL "size"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Size<span class="sort-arrow {{if eq .SortBy "size"}}active {{.SortDir}}{{end}}"></span></a></th>
-          <th class="col-actions"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {{range $i, $doc := .Documents}}
-        <tr>
-          <td class="cell-muted col-serial">{{add $.ShowFrom $i}}</td>
-          <td>
-            <a class="doc-link" href="{{$doc.MessageLink}}" target="_blank" rel="noopener" title="{{$doc.FileName}} — opens in Telegram">
-              <span class="doc-icon ext-{{lower $doc.Extension}}">{{if $doc.Extension}}{{extUpper $doc.Extension}}{{else}}DOC{{end}}</span>
-              <span class="doc-name">{{$doc.FileName}}</span>
-            </a>
-          </td>
-          <td class="cell-muted col-type">
-            {{if $doc.Extension}}{{extUpper $doc.Extension}}{{else}}{{if $doc.MimeType}}{{$doc.MimeType}}{{else}}UNKNOWN{{end}}{{end}}
-          </td>
-          <td class="col-tags">
-            <div class="cell-tags">
-              {{range $doc.Tags}}<span class="chip" style="--tag: {{.Color}}"><span class="pill-dot"></span>{{.Name}}</span>{{end}}
-              {{if not $doc.Tags}}<span class="chip chip-plain">untagged</span>{{end}}
-            </div>
-          </td>
-          <td class="cell-muted col-date">{{fmtDate $doc.UploadedAt}}</td>
-          <td class="cell-muted col-size">{{fmtSize $doc.FileSize}}</td>
-          <td class="col-actions">
-            <form method="post" action="/documents/{{$doc.ID}}/delete" class="row-actions" confirm-doc-delete>
-              <input type="hidden" name="confirm" value="1">
-              <button class="btn btn-ghost btn-sm btn-danger" type="submit" title="Remove from archive (file stays on Telegram)">Delete</button>
-            </form>
-          </td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
+    <div class="doc-table-scroll">
+      <table class="doc-table" data-sort="{{.SortBy}}" data-dir="{{.SortDir}}">
+        <thead>
+          <tr>
+            <th class="col-select">
+              <input type="checkbox" class="row-select" data-select-all aria-label="Select all documents on this page">
+            </th>
+            <th class="col-name sort-col" data-col="name"><a class="th-sort" href="/documents?{{.SortURL "name"}}" hx-get="/documents/list?{{.SortURL "name"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Name<span class="sort-arrow {{if eq .SortBy "name"}}active {{.SortDir}}{{end}}"></span></a></th>
+            <th class="col-type sort-col" data-col="type"><a class="th-sort" href="/documents?{{.SortURL "type"}}" hx-get="/documents/list?{{.SortURL "type"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Type<span class="sort-arrow {{if eq .SortBy "type"}}active {{.SortDir}}{{end}}"></span></a></th>
+            <th class="col-tags">Tags</th>
+            <th class="col-date sort-col" data-col="date"><a class="th-sort" href="/documents?{{.SortURL "date"}}" hx-get="/documents/list?{{.SortURL "date"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Uploaded<span class="sort-arrow {{if eq .SortBy "date"}}active {{.SortDir}}{{end}}"></span></a></th>
+            <th class="col-size sort-col" data-col="size"><a class="th-sort" href="/documents?{{.SortURL "size"}}" hx-get="/documents/list?{{.SortURL "size"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Size<span class="sort-arrow {{if eq .SortBy "size"}}active {{.SortDir}}{{end}}"></span></a></th>
+            <th class="col-actions"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range $doc := .Documents}}
+          <tr>
+            <td class="col-select">
+              <input type="checkbox" class="row-select" name="doc_ids" value="{{$doc.ID}}" aria-label="Select {{$doc.FileName}}">
+            </td>
+            <td>
+              <a class="doc-link" href="{{$doc.MessageLink}}" target="_blank" rel="noopener" title="{{$doc.FileName}} — opens in Telegram">
+                <span class="doc-icon ext-{{lower $doc.Extension}}">{{if $doc.Extension}}{{extUpper $doc.Extension}}{{else}}DOC{{end}}</span>
+                <span class="doc-name">{{$doc.FileName}}</span>
+              </a>
+            </td>
+            <td class="cell-muted col-type">
+              {{if $doc.Extension}}{{extUpper $doc.Extension}}{{else}}{{if $doc.MimeType}}{{$doc.MimeType}}{{else}}UNKNOWN{{end}}{{end}}
+            </td>
+            <td class="col-tags">
+              <div class="cell-tags">
+                {{range $doc.Tags}}<span class="chip" style="--tag: {{.Color}}"><span class="pill-dot"></span>{{.Name}}</span>{{end}}
+                {{if not $doc.Tags}}<span class="chip chip-plain">untagged</span>{{end}}
+              </div>
+            </td>
+            <td class="cell-muted col-date">{{fmtDate $doc.UploadedAt}}</td>
+            <td class="cell-muted col-size">{{fmtSize $doc.FileSize}}</td>
+            <td class="col-actions">
+              <form method="post" action="/documents/{{$doc.ID}}/delete" class="row-actions" confirm-doc-delete>
+                <input type="hidden" name="confirm" value="1">
+                <button class="btn btn-ghost btn-sm btn-danger" type="submit" title="Remove from archive (file stays on Telegram)">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <div class="table-footer">

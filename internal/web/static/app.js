@@ -60,6 +60,24 @@ document.addEventListener('submit', function (e) {
   }
 });
 
+// Documents table: keep the "select all" checkbox (in the header's checkbox
+// column) in sync with the individual per-row checkboxes below it.
+document.addEventListener('change', function (e) {
+  var el = e.target;
+  if (!(el instanceof HTMLInputElement) || el.type !== 'checkbox') return;
+  var table = el.closest('.doc-table');
+  if (!table) return;
+  var rows = table.querySelectorAll('tbody .row-select');
+  if (el.hasAttribute('data-select-all')) {
+    rows.forEach(function (cb) { cb.checked = el.checked; });
+  } else {
+    var selectAll = table.querySelector('thead [data-select-all]');
+    if (selectAll) {
+      selectAll.checked = rows.length > 0 && Array.prototype.every.call(rows, function (cb) { return cb.checked; });
+    }
+  }
+});
+
 // When the per-page <select> changes, send an htmx GET with all filter params
 // plus the new per_page value.  htmx's hx-include="#filter-form" takes care of
 // the search/filter parameters; the select's own name/value provides per_page.

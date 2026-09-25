@@ -369,6 +369,10 @@ select.input { appearance: auto; }
   overflow: hidden;
 }
 
+.doc-table-scroll {
+  overflow-x: auto;
+}
+
 .doc-table {
   width: 100%;
   max-width: 100%;
@@ -381,14 +385,43 @@ select.input { appearance: auto; }
 /* Fixed-layout column widths: keeps the table inside its container no matter
    how long a string in any single cell is. Long content truncates with an
    ellipsis (where white-space is nowrap) or wraps (otherwise) instead of
-   pushing the delete button / later columns off-screen. */
-.col-serial { width: 3.2rem; }
-.col-name   { width: 32%; }
+   pushing the delete button / later columns off-screen. Percentage columns
+   (name/tags) automatically pick up any width freed by removing a column,
+   so there's nothing to manually rebalance. Single source of truth per
+   column — do not redeclare these widths elsewhere.
+
+   .col-select is a real column of this table (so its checkboxes are
+   guaranteed pixel-perfect, native row-for-row alignment — no separate
+   element trying to shadow the table's own row heights) but is styled below
+   to look like a distinct lane bolted onto the table rather than a data
+   column: its own background and a border separating it from Name onward. */
+.col-select { width: 2.75rem; text-align: center; }
+.col-name   { width: 34%; }
 .col-type   { width: 4.5rem; }
-.col-tags   { width: 22%; }
+.col-tags   { width: 24%; }
 .col-date   { width: 7.5rem; }
 .col-size   { width: 5.5rem; }
-.col-actions{ width: 5rem; }
+.col-actions{ width: 6rem; white-space: nowrap; text-align: right; }
+
+.col-select {
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+}
+.doc-table thead .col-select { background: var(--surface-2); }
+/* .doc-table thead th sets text-align: left with higher specificity
+   (two type selectors + a class) than .col-select's single class, so it was
+   silently winning and left-aligning just the header checkbox while the
+   body cells (no competing text-align rule) stayed centered. Matching that
+   specificity here restores centering for the header cell too. */
+.doc-table thead th.col-select { text-align: center; }
+
+.row-select {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  vertical-align: middle;
+}
 
 .col-type, .col-name, .col-tags {
   max-width: 100%;
@@ -400,6 +433,7 @@ select.input { appearance: auto; }
 }
 
 .doc-table thead th {
+  height: 2.75rem;
   text-align: left;
   font-size: 0.72rem;
   font-weight: 600;
@@ -423,16 +457,6 @@ select.input { appearance: auto; }
 }
 .th-sort:hover { color: var(--foreground); background: color-mix(in srgb, var(--primary) 10%, var(--surface-2)); }
 th:has(.th-sort:hover) { color: var(--foreground); }
-
-/* Serial number column — reference only, not sortable */
-.col-serial {
-  width: 3.5rem;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.col-serial.col-serial-header {
-  text-align: center;
-}
 
 /* Sort arrow indicators — pure CSS, no text characters */
 .sort-arrow {
@@ -467,6 +491,7 @@ th:has(.th-sort:hover) { color: var(--foreground); }
 }
 
 .doc-table tbody td {
+  height: 3.625rem;
   padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
@@ -516,10 +541,21 @@ th:has(.th-sort:hover) { color: var(--foreground); }
 
 .cell-muted { color: var(--muted); font-size: 0.84rem; white-space: nowrap; }
 
-.cell-tags { display: flex; flex-wrap: wrap; gap: var(--s1); max-width: 260px; }
+/* Tags stay on one line (scroll horizontally if there are many) instead of
+   wrapping — wrapping would make that row taller than the rest, breaking the
+   table's otherwise uniform row height. */
+.cell-tags {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--s1);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.cell-tags .chip { flex: none; }
 
-/* Actions column (delete button) */
-.col-actions { width: 1%; white-space: nowrap; text-align: right; }
+/* Actions column (delete button) — width/alignment declared once, on
+   .col-actions itself, above. */
 .col-actions .row-actions { justify-content: flex-end; }
 
 /* One-time deletion notice modal */
