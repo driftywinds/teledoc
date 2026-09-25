@@ -465,6 +465,13 @@ select.input { appearance: auto; }
   color: var(--muted);
 }
 
+.bulk-tag-hint {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
 .bulk-tag-list {
   display: flex;
   flex-direction: column;

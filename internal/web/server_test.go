@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -71,8 +72,9 @@ func newTestStore(t *testing.T) *store.Store {
 // itoa formats an int64 for form values.
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
-// The "Tag selected" bulk action: form parsing (repeated doc_ids/tags values),
-// the redirect, and the resulting document_tags rows.
+// The "Tag selected" bulk action toggles tag membership per (doc, tag) pair:
+// a chosen tag is added to selected docs that lack it and removed from
+// selected docs that already have it — each document flips independently.
 func TestHandleDocumentsBulkTag(t *testing.T) {
 	st := newTestStore(t)
 	docA, _, err := st.UpsertDocument(store.Document{FileName: "a.pdf", ChatID: 1, MessageID: 1, MessageLink: "l", UploadedAt: time.Now()})
@@ -95,51 +97,59 @@ func TestHandleDocumentsBulkTag(t *testing.T) {
 	s := New(st, rules.New(st, nil), "", nil)
 	handler := s.Handler()
 
+	post := func(body string) {
+		t.Helper()
+		r := httptest.NewRequest("POST", "/documents/bulk-tag", strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != 303 {
+			t.Fatalf("expected redirect, got %d", w.Code)
+		}
+	}
+	check := func(docID int64, want map[string]bool) {
+		t.Helper()
+		tags, err := st.DocumentTags(docID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]bool{}
+		for _, tg := range tags {
+			got[tg.Name] = true
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("doc %d tags: got %v, want %v", docID, got, want)
+		}
+	}
+
 	form := url.Values{}
 	form.Add("doc_ids", itoa(docA))
 	form.Add("doc_ids", itoa(docB))
 	form.Add("tags", itoa(tag1.ID))
 	form.Add("tags", itoa(tag2.ID))
-	r := httptest.NewRequest("POST", "/documents/bulk-tag", strings.NewReader(form.Encode()))
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, r)
+	body := form.Encode()
 
-	if w.Code != 303 {
-		t.Fatalf("expected redirect, got %d", w.Code)
-	}
-	for _, docID := range []int64{docA, docB} {
-		tags, err := st.DocumentTags(docID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(tags) != 2 {
-			t.Errorf("document %d: got %d tags, want 2", docID, len(tags))
-		}
-	}
+	// Toggle on: both untagged documents gain both tags.
+	post(body)
+	check(docA, map[string]bool{"invoices": true, "reports": true})
+	check(docB, map[string]bool{"invoices": true, "reports": true})
 
-	// Submitting the same selection again is a no-op (idempotent links).
-	r = httptest.NewRequest("POST", "/documents/bulk-tag", strings.NewReader(form.Encode()))
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	w = httptest.NewRecorder()
-	handler.ServeHTTP(w, r)
-	if w.Code != 303 {
-		t.Fatalf("re-tag: expected redirect, got %d", w.Code)
-	}
-	tags, err := st.DocumentTags(docA)
-	if err != nil {
+	// Toggle again: the inverse — both documents lose both tags.
+	post(body)
+	check(docA, map[string]bool{})
+	check(docB, map[string]bool{})
+
+	// Mixed batch, per-document flipping: docA holds only "invoices",
+	// docB holds nothing. After toggling both tags on both docs, docA's
+	// invoices link is removed while reports is added; docB gains both.
+	if _, err := st.AddTagToDocument(docA, tag1.ID); err != nil {
 		t.Fatal(err)
 	}
-	if len(tags) != 2 {
-		t.Errorf("re-tag duplicated links: got %d tags, want 2", len(tags))
-	}
+	post(body)
+	check(docA, map[string]bool{"reports": true})
+	check(docB, map[string]bool{"invoices": true, "reports": true})
 
-	// Missing selections redirect back with an error flash, no changes.
-	r = httptest.NewRequest("POST", "/documents/bulk-tag", strings.NewReader("doc_ids="+itoa(docA)))
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	w = httptest.NewRecorder()
-	handler.ServeHTTP(w, r)
-	if w.Code != 303 {
-		t.Fatalf("no-tags submit: expected redirect, got %d", w.Code)
-	}
+	// Submitting without tags redirects back with an error flash, no changes.
+	post("doc_ids=" + itoa(docA))
+	check(docA, map[string]bool{"reports": true})
 }

@@ -429,7 +429,7 @@ func (s *Server) documentsData(r *http.Request) (documentsPage, error) {
 	if total == 0 {
 		showFrom = 0
 	}
-	showTo := (page - 1)*perPage + len(docs)
+	showTo := (page-1)*perPage + len(docs)
 	return documentsPage{
 		Tags: tags, Documents: docs, Search: search,
 		ActiveTags: active, Untagged: untagged, TotalDocs: total,
@@ -560,10 +560,13 @@ func (s *Server) handleDocumentsBulkDelete(w http.ResponseWriter, r *http.Reques
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// handleDocumentsBulkTag attaches one or more tags to every selected document
-// — the "Tag selected" toolbar above the table. Tags arrive as one "tags"
-// form value per chosen tag, document IDs as one "doc_ids" value per selected
-// row checkbox (each row checkbox carries form="bulk-tag-form").
+// handleDocumentsBulkTag toggles one or more tags across every selected
+// document — the "Tag selected" toolbar above the table. Each chosen tag is
+// added to selected docs that lack it and removed from those that already
+// have it, per document. Tags arrive as one "tags" form value per chosen
+// tag, document IDs as one "doc_ids" value per selected row checkbox (the
+// checkboxes are owned by the bulk-delete form; app.js copies the checked
+// IDs into this form at submit time).
 func (s *Server) handleDocumentsBulkTag(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
@@ -576,13 +579,18 @@ func (s *Server) handleDocumentsBulkTag(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	created, err := s.store.TagDocuments(ids, tagIDs)
-	if err != nil {
-		setFlash(w, "Could not tag the selected documents: "+err.Error())
-	} else if created == 0 {
-		setFlash(w, "Selected documents already had those tags — nothing to do.")
-	} else {
-		setFlash(w, fmt.Sprintf("Tagged %d document(s).", created))
+	added, removed, err := s.store.ToggleTagsOnDocuments(ids, tagIDs)
+	switch {
+	case err != nil:
+		setFlash(w, "Could not update tags on the selected documents: "+err.Error())
+	case added == 0 && removed == 0:
+		setFlash(w, "Nothing to change.")
+	case added > 0 && removed > 0:
+		setFlash(w, fmt.Sprintf("Tag applied to %d document(s), removed from %d.", added, removed))
+	case added > 0:
+		setFlash(w, fmt.Sprintf("Tag applied to %d document(s).", added))
+	default:
+		setFlash(w, fmt.Sprintf("Tag removed from %d document(s).", removed))
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

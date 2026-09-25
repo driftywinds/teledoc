@@ -53,7 +53,7 @@
     <span class="bulk-toolbar-count" id="bulk-toolbar-count">0 selected</span>
     <div class="bulk-toolbar-actions">
       <div class="bulk-tag-wrap">
-        <button type="button" id="bulk-tag-toggle" class="btn-tag-selected" aria-expanded="false" aria-controls="bulk-tag-panel" aria-label="Tag selected">
+        <button type="button" id="bulk-tag-toggle" class="btn-tag-selected" aria-expanded="false" aria-controls="bulk-tag-panel" aria-label="Toggle tags on selected">
           <svg class="tag-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V4a2 2 0 0 1 2-2h8l8.59 8.59a2 2 0 0 1 0 2.82Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
             <circle cx="7.5" cy="7.5" r="1.2" fill="currentColor"/>
@@ -61,7 +61,8 @@
           <span class="btn-label">Tag selected</span>
         </button>
         <div class="bulk-tag-panel" id="bulk-tag-panel" hidden>
-          <p class="bulk-tag-title">Apply tags to selection</p>
+          <p class="bulk-tag-title">Toggle tags on selection</p>
+          <p class="bulk-tag-hint">Selected documents that already have a tag will lose it; the rest will gain it.</p>
           {{if .Tags}}
           <div class="bulk-tag-list">
             {{range .Tags}}

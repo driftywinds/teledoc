@@ -175,7 +175,7 @@ func (s *Store) DeleteDocument(id int64) error {
 		return fmt.Errorf("delete document: %w", err)
 	}
 	return nil
-}// DocumentFilter selects which documents ListDocuments returns.
+} // DocumentFilter selects which documents ListDocuments returns.
 type DocumentFilter struct {
 	Search   string  // substring match on file name
 	TagIDs   []int64 // documents having ANY of these tags
@@ -434,34 +434,72 @@ func (s *Store) RemoveTagFromDocument(docID, tagID int64) error {
 	return err
 }
 
-// TagDocuments links every tag in tagIDs to every document in docIDs in one
-// transaction — the "Tag selected" bulk action. Idempotent: pairs that are
-// already linked are skipped. Returns the number of new links created.
-func (s *Store) TagDocuments(docIDs, tagIDs []int64) (int, error) {
+// ToggleTagsOnDocuments flips tag membership for every (doc, tag) pair in one
+// transaction — the "Tag selected" bulk action. A tag is removed from docs
+// that have it and added to docs that don't, per document: a doc holding some
+// but not all of the chosen tags gains the missing ones and keeps the rest.
+// Tags not in tagIDs are untouched. Returns added/removed link counts for the
+// confirmation flash.
+func (s *Store) ToggleTagsOnDocuments(docIDs, tagIDs []int64) (added, removed int, err error) {
 	if len(docIDs) == 0 || len(tagIDs) == 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
-		return 0, fmt.Errorf("tag documents: %w", err)
+		return 0, 0, fmt.Errorf("toggle tags: %w", err)
 	}
 	defer tx.Rollback()
-	created := 0
+
+	// Existing links between the selected docs and the selected tags.
+	args := []any{}
+	for _, id := range docIDs {
+		args = append(args, id)
+	}
+	for _, id := range tagIDs {
+		args = append(args, id)
+	}
+	rows, err := tx.Query(
+		`SELECT document_id, tag_id FROM document_tags
+		 WHERE document_id IN (`+placeholders(len(docIDs))+`)
+		   AND tag_id IN (`+placeholders(len(tagIDs))+`)`, args...)
+	if err != nil {
+		return 0, 0, fmt.Errorf("toggle tags: %w", err)
+	}
+	has := map[[2]int64]bool{}
+	for rows.Next() {
+		var d, t int64
+		if err := rows.Scan(&d, &t); err != nil {
+			rows.Close()
+			return 0, 0, fmt.Errorf("toggle tags: %w", err)
+		}
+		has[[2]int64{d, t}] = true
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, 0, fmt.Errorf("toggle tags: %w", err)
+	}
+	rows.Close()
+
+	// Flip each pair: present -> remove, absent -> add.
 	for _, docID := range docIDs {
 		for _, tagID := range tagIDs {
-			res, err := tx.Exec(`INSERT OR IGNORE INTO document_tags (document_id, tag_id) VALUES (?, ?)`, docID, tagID)
-			if err != nil {
-				return 0, fmt.Errorf("tag document %d with tag %d: %w", docID, tagID, err)
-			}
-			if n, _ := res.RowsAffected(); n > 0 {
-				created++
+			if has[[2]int64{docID, tagID}] {
+				if _, err := tx.Exec(`DELETE FROM document_tags WHERE document_id = ? AND tag_id = ?`, docID, tagID); err != nil {
+					return 0, 0, fmt.Errorf("toggle tags: %w", err)
+				}
+				removed++
+			} else {
+				if _, err := tx.Exec(`INSERT INTO document_tags (document_id, tag_id) VALUES (?, ?)`, docID, tagID); err != nil {
+					return 0, 0, fmt.Errorf("toggle tags: %w", err)
+				}
+				added++
 			}
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("tag documents: %w", err)
+		return 0, 0, fmt.Errorf("toggle tags: %w", err)
 	}
-	return created, nil
+	return added, removed, nil
 }
 
 // ---------------------------------------------------------------------------
