@@ -293,12 +293,15 @@ func (b *Bot) ingest(ctx context.Context, msg *models.Message) (ingestStatus, er
 }
 
 // handleEdit re-runs caption-hashtag tagging when a document post's caption
-// is edited (adds a hashtag, fixes a typo). Tagging is strictly add-only: an
-// edit never removes a tag — removal is a web-UI action. Edits to non-
-// document posts, and edits of documents that are not in the archive (posted
-// before the bot joined, or deleted via the web UI — deletion stays
-// authoritative), are ignored. On success the existing status reaction is
-// left untouched; on failure it flips to the needs-attention reaction.
+// is edited (adds a hashtag, fixes a typo). The edit mirrors the caption:
+// added hashtags tag the document, and removing a hashtag removes that tag —
+// but only if the tag's origin was a caption hashtag (provenance-gated).
+// Rule-applied and manually added tags are never touched by edits; tag
+// removal for those stays a web-UI action. Edits to non-document posts, and
+// edits of documents that are not in the archive (posted before the bot
+// joined, or deleted via the web UI — deletion stays authoritative), are
+// ignored. On success the existing status reaction is left untouched; on
+// failure it flips to the needs-attention reaction.
 func (b *Bot) handleEdit(ctx context.Context, msg *models.Message) {
 	if msg == nil || msg.Document == nil {
 		return // caption edits on non-document posts never affect tags
@@ -319,32 +322,20 @@ func (b *Bot) handleEdit(ctx context.Context, msg *models.Message) {
 	}
 }
 
-// applyCaptionHashtags applies a message's caption #hashtags to a document,
-// bypassing the rules engine entirely (Telegram-native tagging). Each tag is
-// resolved case-insensitively — an existing tag wins whatever its casing,
-// otherwise a new tag is created (lowercased). Idempotent: re-applying a tag
-// the document already has is a no-op, which makes caption edits add-only by
-// construction. Returns nil when the caption carries no hashtags.
+// applyCaptionHashtags mirrors a message's caption #hashtags onto a document,
+// bypassing the rules engine entirely (Telegram-native tagging): added
+// hashtags tag the document, hashtags removed by an earlier edit untag it —
+// gated by link provenance, so only caption-created links are removable (see
+// Store.SyncHashtagTags). A caption with no hashtags removes only caption-
+// created links, so on a fresh document it changes nothing. Existing tags win
+// via case-insensitive match; missing ones are created lowercased. Idempotent.
 func (b *Bot) applyCaptionHashtags(docID int64, msg *models.Message) error {
 	hts := hashtagEntities(msg.Caption, msg.CaptionEntities)
-	if len(hts) == 0 {
-		return nil
+	if len(hts) > 0 {
+		b.log.Printf("telegram: caption hashtags: %s", strings.Join(hts, " "))
 	}
-	b.log.Printf("telegram: caption hashtags: %s", strings.Join(hts, " "))
-	for _, ht := range hts {
-		name := strings.TrimPrefix(ht, "#")
-		if name == "" {
-			continue
-		}
-		tagID, err := b.store.EnsureTag(name)
-		if err != nil {
-			return fmt.Errorf("ensure caption tag %q: %w", name, err)
-		}
-		if _, err := b.store.AddTagToDocument(docID, tagID); err != nil {
-			return fmt.Errorf("apply caption tag %q: %w", name, err)
-		}
-	}
-	return nil
+	_, _, err := b.store.SyncHashtagTags(docID, hts)
+	return err
 }
 
 // react sets a single emoji reaction on the document message. Failures are

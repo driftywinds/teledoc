@@ -111,10 +111,11 @@ func TestHashtagEntities(t *testing.T) {
 	}
 }
 
-// Feature 5: editing a document post's caption re-runs hashtag tagging on
-// the archived document. Tagging is strictly add-only — an edit can never
-// remove a tag — and edits of documents that are not in the archive are
-// ignored rather than resurrecting them.
+// Feature 5: editing a document post's caption mirrors its hashtags onto
+// the archived document — added hashtags tag it, and removing a hashtag
+// removes the tag, but only when the tag's origin was a caption hashtag
+// (rule/manual tags are never touched by edits). Edits of documents that
+// are not in the archive are ignored rather than resurrecting them.
 func TestHandleEditCaptionRetags(t *testing.T) {
 	st, err := store.New(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -175,12 +176,40 @@ func TestHandleEditCaptionRetags(t *testing.T) {
 		t.Fatalf("after edit: got %v", got)
 	}
 
-	// Edit that removes the hashtags: tags are add-only and must remain.
+	// Edit that removes the hashtags: caption-created tags are removed...
 	msg.Caption = "quarterly report"
 	msg.CaptionEntities = nil
 	b.handleEdit(context.Background(), &msg)
-	if got := tagNames(); !reflect.DeepEqual(got, map[string]bool{"work": true, "finance": true}) {
+	if got := tagNames(); !reflect.DeepEqual(got, map[string]bool{}) {
 		t.Fatalf("after hashtag-removing edit: got %v", got)
+	}
+
+	// A rule-applied tag is not claimable by a caption hashtag: re-adding the
+	// hashtag via an edit links it, but the link keeps rule ownership, so a
+	// later edit removing the hashtag must leave the tag in place.
+	rule := store.Rule{
+		Name: "pdfs", MatchMode: "all",
+		Conditions: []store.Condition{{Field: "name", Operator: "ends_with", Value: ".pdf", CaseSensitive: false}},
+		TagIDs:     []int64{func() int64 { id, _ := st.EnsureTag("finance"); return id }()},
+	}
+	if _, err := st.CreateRule(rule.Name, rule.MatchMode, true, rule.Conditions, rule.TagIDs); err != nil {
+		t.Fatal(err)
+	}
+	// Re-tag the document with the rule (the doc was already archived above).
+	if _, err := b.engine.ApplyRulesToDocument(doc); err != nil {
+		t.Fatal(err)
+	}
+	msg.Caption = "quarterly report #work"
+	msg.CaptionEntities = []models.MessageEntity{entity(models.MessageEntityTypeHashtag, 17, 5)}
+	b.handleEdit(context.Background(), &msg)
+	if got := tagNames(); !reflect.DeepEqual(got, map[string]bool{"finance": true, "work": true}) {
+		t.Fatalf("after rule-tagged overlap edit: got %v", got)
+	}
+	msg.Caption = "quarterly report"
+	msg.CaptionEntities = nil
+	b.handleEdit(context.Background(), &msg)
+	if got := tagNames(); !reflect.DeepEqual(got, map[string]bool{"finance": true}) {
+		t.Fatalf("rule-owned tag must survive hashtag removal: got %v", got)
 	}
 
 	// An edit for a document that is not archived is ignored: no new tag.

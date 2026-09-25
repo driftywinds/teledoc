@@ -130,3 +130,153 @@ func TestDocumentByMessage(t *testing.T) {
 		t.Fatalf("expected sql.ErrNoRows for unarchived message, got %v", err)
 	}
 }
+
+// SyncHashtagTags is the caption-edit engine at store level: hashtags are
+// resolved case-insensitively, new tags are created lowercased, and only
+// caption-created links are removed when a hashtag disappears.
+func TestSyncHashtagTags(t *testing.T) {
+	st, err := New(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	id, created, err := st.UpsertDocument(Document{
+		FileName: "a.pdf", ChatID: -100, MessageID: 1, MessageLink: "l", UploadedAt: time.Now(),
+	})
+	if err != nil || !created {
+		t.Fatalf("upsert: created=%v err=%v", created, err)
+	}
+
+	// "Work" pre-exists; the caption's #WORK must reuse it untouched.
+	work, err := st.CreateTag("Work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = work
+
+	added, removed, err := st.SyncHashtagTags(id, []string{"#WORK", "#finance"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added != 2 || removed != 0 {
+		t.Fatalf("first sync: added=%d removed=%d, want 2/0", added, removed)
+	}
+	tags, err := st.DocumentTags(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]string{}
+	for _, tg := range tags {
+		names[tg.Name] = tg.Name
+	}
+	if _, ok := names["Work"]; !ok {
+		t.Fatalf("existing tag was replaced: %v", names)
+	}
+	if _, ok := names["finance"]; !ok {
+		t.Fatalf("new caption tag missing: %v", names)
+	}
+
+	// Manual tagging joins the mix — it must be invisible to caption edits.
+	manual, err := st.CreateTag("manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddTagToDocument(id, manual.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Edit drops #WORK (case change is still the same tag) and #finance.
+	added, removed, err = st.SyncHashtagTags(id, []string{"#other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added != 1 || removed != 2 {
+		t.Fatalf("second sync: added=%d removed=%d, want 1/2", added, removed)
+	}
+	tags, err = st.DocumentTags(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names = map[string]string{}
+	for _, tg := range tags {
+		names[tg.Name] = tg.Name
+	}
+	if len(names) != 2 || names["manual"] != "manual" || names["other"] != "other" {
+		t.Fatalf("after removal sync: %v (manual must survive, Work/finance must go)", names)
+	}
+
+	// A caption without hashtags carries no caption-owned tags: syncing with
+	// an empty list removes the caption-created link while the manual one
+	// survives. (On a fresh document this is a no-op — nothing to remove.)
+	added, removed, err = st.SyncHashtagTags(id, nil)
+	if err != nil || added != 0 || removed != 1 {
+		t.Fatalf("empty-caption sync: added=%d removed=%d err=%v", added, removed, err)
+	}
+	tags, err = st.DocumentTags(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 1 || tags[0].Name != "manual" {
+		t.Fatalf("after empty-caption sync: %v (only the manual tag must survive)", tags)
+	}
+}
+
+// Rules and manual actions always take precedence over caption hashtags:
+// applying a tag through AddTagToDocument clears the caption provenance of an
+// existing link, so a later caption edit removing that hashtag keeps the tag.
+func TestAddTagToDocumentClaimsOwnership(t *testing.T) {
+	st, err := New(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	id, created, err := st.UpsertDocument(Document{
+		FileName: "a.pdf", ChatID: -100, MessageID: 1, MessageLink: "l", UploadedAt: time.Now(),
+	})
+	if err != nil || !created {
+		t.Fatalf("upsert: created=%v err=%v", created, err)
+	}
+
+	if added, removed, err := st.SyncHashtagTags(id, []string{"#finance"}); err != nil || added != 1 || removed != 0 {
+		t.Fatalf("sync: added=%d removed=%d err=%v", added, removed, err)
+	}
+	tagID, err := st.EnsureTag("finance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var via int
+	if err := st.db.QueryRow(
+		`SELECT via_hashtag FROM document_tags WHERE document_id = ? AND tag_id = ?`, id, tagID).Scan(&via); err != nil {
+		t.Fatal(err)
+	}
+	if via != 1 {
+		t.Fatalf("caption-created link must carry via_hashtag=1, got %d", via)
+	}
+
+	// A rule (or manual action) applies the same tag: ownership moves.
+	isNew, err := st.AddTagToDocument(id, tagID)
+	if err != nil || isNew {
+		t.Fatalf("AddTagToDocument on existing link: isNew=%v err=%v", isNew, err)
+	}
+	if err := st.db.QueryRow(
+		`SELECT via_hashtag FROM document_tags WHERE document_id = ? AND tag_id = ?`, id, tagID).Scan(&via); err != nil {
+		t.Fatal(err)
+	}
+	if via != 0 {
+		t.Fatalf("rule/manual apply must clear via_hashtag, got %d", via)
+	}
+
+	// The caption edit removing the hashtag now keeps the tag.
+	if _, removed, err := st.SyncHashtagTags(id, nil); err != nil || removed != 0 {
+		t.Fatalf("empty-caption sync: removed=%d err=%v", removed, err)
+	}
+	tags, err := st.DocumentTags(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 1 || tags[0].Name != "finance" {
+		t.Fatalf("rule-owned tag must survive caption removal: %v", tags)
+	}
+}

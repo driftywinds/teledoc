@@ -1,0 +1,14 @@
+{
+  "state": "Teledoc: a self-hosted Telegram channel document archive. A bot watches a Telegram channel; documents posted there are archived with auto-tagging, browsable via a web UI. Tags reach a document from three sources: (1) #hashtags in the document caption (applied directly by the bot), (2) Papra-style tagging rules (file name/extension/mime matching), (3) manual tagging in the web UI.\n\nDesign change decided by the user: caption EDITS must now fully mirror the caption — removing a #hashtag from the caption removes that tag from the document (previously edits were add-only). To make removal safe, each document-tag link carries a hidden 'hashtag-managed' flag: only hashtag-managed links are ever removed by an edit; rule-based and manual links are never touched by edits.\n\nThe open question is the OVERLAP case. A document has a tag from a rule or a manual web-UI action (link NOT flagged as hashtag-managed), and then the user mentions that same tag as a #hashtag in the caption (the caption references the same tag name, case-insensitive). The link already exists. When applying the caption hashtag, the bot can either flip the existing link's flag to hashtag-managed, or leave the flag alone. This determines what happens later if the user removes that #hashtag from the caption in an edit.",
+  "model": "jev-latest",
+  "questions": {
+    "overlap_ownership": {
+      "type": "choice",
+      "instructions": "In the overlap case (tag already on the document from a rule or manual web-UI action, then also mentioned as a caption #hashtag), what should happen to the existing link's hashtag-managed flag, and consequently what should a later caption edit that REMOVES that #hashtag do to the tag? Pick one.",
+      "criteria": {
+        "caption_wins": "Flip the link to hashtag-managed: the caption becomes the source of truth for every tag it mentions, so a later edit removing that #hashtag removes the tag from the document (even though a rule or manual action had also applied it; a rule's 'Run now' would re-apply rule tags).",
+        "first_source_wins": "Leave the flag as-is: the rule/manual tagging stays authoritative, so a later edit removing that #hashtag keeps the tag on the document — only tags that first arrived via a caption hashtag are removable by edits."
+      }
+    }
+  }
+}

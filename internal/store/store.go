@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS tags (
 CREATE TABLE IF NOT EXISTS document_tags (
 	document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
 	tag_id      INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+	via_hashtag INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY (document_id, tag_id)
 );
 
@@ -128,7 +129,50 @@ func New(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
+	// Schema additions for databases created before the columns above were
+	// introduced: CREATE TABLE IF NOT EXISTS cannot extend existing tables.
+	if err := migrateDocumentTags(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate schema: %w", err)
+	}
 	return &Store{db: db}, nil
+}
+
+// migrateDocumentTags adds the via_hashtag provenance column when an existing
+// database's document_tags table predates it. The flag marks links created by
+// a caption hashtag — the only ones caption edits may remove; rule-applied
+// and manually added links never carry it, and rule/manual tagging clears it
+// when re-applying a caption-created tag (rules and manual actions take
+// precedence over captions).
+func migrateDocumentTags(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(document_tags)`)
+	if err != nil {
+		return err
+	}
+	hasViaHashtag := false
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notNull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "via_hashtag" {
+			hasViaHashtag = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if hasViaHashtag {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE document_tags ADD COLUMN via_hashtag INTEGER NOT NULL DEFAULT 0`)
+	return err
 }
 
 // Close closes the database.
@@ -461,15 +505,105 @@ func (s *Store) EnsureTag(name string) (int64, error) {
 	return t.ID, nil
 }
 
-// AddTagToDocument links a tag to a document; idempotent. Returns whether a
-// new link was created.
+// AddTagToDocument links a tag to a document from a NON-caption source (a
+// tagging rule or a manual web-UI action); idempotent. Returns whether a new
+// link was created. Rules and manual actions always take precedence over
+// caption hashtags: applying a tag this way clears the link's via_hashtag
+// provenance flag even when the link already existed as caption-created, so a
+// later caption edit removing that hashtag can no longer remove the tag.
 func (s *Store) AddTagToDocument(docID, tagID int64) (bool, error) {
-	res, err := s.db.Exec(`INSERT OR IGNORE INTO document_tags (document_id, tag_id) VALUES (?, ?)`, docID, tagID)
-	if err != nil {
-		return false, err
+	var existing int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM document_tags WHERE document_id = ? AND tag_id = ?`, docID, tagID).Scan(&existing); err != nil {
+		return false, fmt.Errorf("add tag to document: %w", err)
 	}
-	n, _ := res.RowsAffected()
-	return n > 0, nil
+	if existing > 0 {
+		if _, err := s.db.Exec(
+			`UPDATE document_tags SET via_hashtag = 0 WHERE document_id = ? AND tag_id = ?`, docID, tagID); err != nil {
+			return false, fmt.Errorf("add tag to document: %w", err)
+		}
+		return false, nil
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO document_tags (document_id, tag_id) VALUES (?, ?)`, docID, tagID); err != nil {
+		return false, fmt.Errorf("add tag to document: %w", err)
+	}
+	return true, nil
+}
+
+// SyncHashtagTags mirrors a caption's #hashtags onto a document. The tag
+// names arrive with their leading "#". Existing tags win via case-insensitive
+// match (whatever casing they carry); missing ones are created lowercased.
+//
+// Removal is provenance-gated: only links that were created by a previous
+// caption hashtag (via_hashtag = 1) are removed when the hashtag is gone from
+// the caption. Rule-applied and manually added links are never touched, and
+// a caption hashtag never claims an existing link: ownership only moves from
+// the caption to a rule/manual action (see AddTagToDocument), never back.
+func (s *Store) SyncHashtagTags(docID int64, names []string) (added, removed int, err error) {
+	// Resolve the target tag ids.
+	targets := []int64{}
+	seen := map[int64]bool{}
+	for _, name := range names {
+		id, err := s.EnsureTag(strings.TrimPrefix(name, "#"))
+		if err != nil {
+			return 0, 0, fmt.Errorf("ensure hashtag tag %q: %w", name, err)
+		}
+		if !seen[id] {
+			seen[id] = true
+			targets = append(targets, id)
+		}
+	}
+
+	// Current links and their provenance.
+	rows, err := s.db.Query(`SELECT tag_id, via_hashtag FROM document_tags WHERE document_id = ?`, docID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("sync hashtag tags: %w", err)
+	}
+	existing := map[int64]bool{}       // tag ids currently linked
+	hashtagManaged := map[int64]bool{} // subset created by a caption hashtag
+	for rows.Next() {
+		var tagID int64
+		var via int
+		if err := rows.Scan(&tagID, &via); err != nil {
+			rows.Close()
+			return 0, 0, fmt.Errorf("sync hashtag tags: %w", err)
+		}
+		existing[tagID] = true
+		if via != 0 {
+			hashtagManaged[tagID] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, 0, fmt.Errorf("sync hashtag tags: %w", err)
+	}
+	rows.Close()
+
+	// Add tags the caption mentions that are not linked yet; the link is
+	// created owned by the caption (via_hashtag = 1).
+	for _, tagID := range targets {
+		if existing[tagID] {
+			continue
+		}
+		if _, err := s.db.Exec(
+			`INSERT INTO document_tags (document_id, tag_id, via_hashtag) VALUES (?, ?, 1)`, docID, tagID); err != nil {
+			return added, removed, fmt.Errorf("sync hashtag tags: %w", err)
+		}
+		added++
+	}
+
+	// Remove hashtag-created links whose hashtag is no longer in the caption.
+	for tagID, managed := range hashtagManaged {
+		if managed && !seen[tagID] {
+			if _, err := s.db.Exec(
+				`DELETE FROM document_tags WHERE document_id = ? AND tag_id = ? AND via_hashtag = 1`, docID, tagID); err != nil {
+				return added, removed, fmt.Errorf("sync hashtag tags: %w", err)
+			}
+			removed++
+		}
+	}
+	return added, removed, nil
 }
 
 // RemoveTagFromDocument unlinks a tag from a document.
