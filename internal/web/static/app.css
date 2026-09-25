@@ -389,6 +389,7 @@ select.input { appearance: auto; }
   display: inline-flex;
   align-items: center;
   gap: 0;
+  font: inherit; /* buttons don't inherit fonts by default — match .btn (Inter) */
   padding: 0.5rem;
   border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
@@ -472,9 +473,24 @@ select.input { appearance: auto; }
 }
 .doc-table thead .col-select { background: var(--surface-2); }
 
+/* The select-all header cell and the per-row select cells must share
+   IDENTICAL geometry so both checkboxes centre on the same vertical axis.
+   The td otherwise inherits the table's 16px horizontal cell padding, which
+   leaves a 12px centring box for a 16px checkbox in this 2.75rem column —
+   i.e. the checkbox overflows its centring box, and browsers disagree on
+   where centred overflow lands. Zero horizontal padding in both cells means
+   the checkbox centres in the full column width with no overflow at all. */
+.doc-table th.col-select,
+.doc-table td.col-select {
+  padding-left: 0;
+  padding-right: 0;
+  vertical-align: middle;
+}
+
 .row-select {
   width: 16px;
   height: 16px;
+  margin: 0; /* Chromium's UA stylesheet offsets checkboxes by 3px 3px 3px 4px */
   accent-color: var(--primary);
   cursor: pointer;
   vertical-align: middle;
