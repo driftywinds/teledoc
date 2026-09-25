@@ -74,6 +74,7 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("GET /documents/list", s.handleDocumentList) // htmx partial
 	protected.HandleFunc("POST /documents/{id}/tags", s.handleDocumentTag)
 	protected.HandleFunc("POST /documents/{id}/delete", s.handleDocumentDelete)
+	protected.HandleFunc("POST /documents/bulk-delete", s.handleDocumentsBulkDelete)
 	protected.HandleFunc("GET /tags", s.handleTags)
 	protected.HandleFunc("POST /tags", s.handleCreateTag)
 	protected.HandleFunc("POST /tags/{id}/delete", s.handleDeleteTag)
@@ -510,6 +511,50 @@ func (s *Server) handleDocumentDelete(w http.ResponseWriter, r *http.Request) {
 		setFlash(w, "Could not delete document: "+err.Error())
 	} else {
 		setFlash(w, "Document deleted from the archive.")
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// handleDocumentsBulkDelete removes several document entries at once — the
+// "Delete selected" toolbar above the table. Same DB-only semantics and
+// confirm-token requirement as the single-document delete above; one
+// document ID per selected row checkbox, submitted via each checkbox's
+// form="bulk-delete-form" attribute.
+func (s *Server) handleDocumentsBulkDelete(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	if r.PostFormValue("confirm") != "1" {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	ids := r.PostForm["doc_ids"]
+	if len(ids) == 0 {
+		setFlash(w, "No documents were selected.")
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	deleted, failed := 0, 0
+	for _, raw := range ids {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			failed++
+			continue
+		}
+		if err := s.store.DeleteDocument(id); err != nil {
+			failed++
+			continue
+		}
+		deleted++
+	}
+	switch {
+	case failed == 0:
+		setFlash(w, fmt.Sprintf("%d document(s) deleted from the archive.", deleted))
+	case deleted == 0:
+		setFlash(w, "Could not delete the selected documents.")
+	default:
+		setFlash(w, fmt.Sprintf("%d document(s) deleted, %d failed.", deleted, failed))
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

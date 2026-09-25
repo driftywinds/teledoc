@@ -37,6 +37,22 @@
 {{define "fragment_grid"}}
 <div id="doc-table-wrap">
   {{if .Documents}}
+  <!-- Lives outside the visible table; row checkboxes point at it via
+       form="bulk-delete-form" so a single click still reaches every
+       selected row regardless of where it sits in the DOM. -->
+  <form id="bulk-delete-form" method="post" action="/documents/bulk-delete" confirm-bulk-delete>
+    <input type="hidden" name="confirm" value="1">
+  </form>
+  <div class="bulk-toolbar" id="bulk-toolbar" hidden>
+    <span class="bulk-toolbar-count" id="bulk-toolbar-count">0 selected</span>
+    <button type="submit" form="bulk-delete-form" class="btn-delete-selected" aria-label="Delete selected">
+      <svg class="trash-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m3 0-.8 12.14A2 2 0 0 1 15.2 21H8.8a2 2 0 0 1-2-1.86L6 7h12Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <span class="btn-label">Delete selected</span>
+    </button>
+  </div>
   <div class="table-card">
     <div class="doc-table-scroll">
       <table class="doc-table" data-sort="{{.SortBy}}" data-dir="{{.SortDir}}">
@@ -57,7 +73,7 @@
           {{range $doc := .Documents}}
           <tr>
             <td class="col-select">
-              <input type="checkbox" class="row-select" name="doc_ids" value="{{$doc.ID}}" aria-label="Select {{$doc.FileName}}">
+              <input type="checkbox" class="row-select" name="doc_ids" value="{{$doc.ID}}" form="bulk-delete-form" aria-label="Select {{$doc.FileName}}">
             </td>
             <td>
               <a class="doc-link" href="{{$doc.MessageLink}}" target="_blank" rel="noopener" title="{{$doc.FileName}} — opens in Telegram">

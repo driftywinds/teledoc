@@ -61,7 +61,27 @@ document.addEventListener('submit', function (e) {
 });
 
 // Documents table: keep the "select all" checkbox (in the header's checkbox
-// column) in sync with the individual per-row checkboxes below it.
+// column), the bulk-delete toolbar's visibility, and its "N selected" count
+// all in sync with the individual per-row checkboxes.
+function syncBulkToolbar(root) {
+  var scope = root || document;
+  var table = scope.querySelector('.doc-table');
+  if (!table) return;
+  var rows = table.querySelectorAll('tbody .row-select');
+  var checked = Array.prototype.filter.call(rows, function (cb) { return cb.checked; });
+
+  var selectAll = table.querySelector('thead [data-select-all]');
+  if (selectAll) {
+    selectAll.checked = rows.length > 0 && checked.length === rows.length;
+    selectAll.indeterminate = checked.length > 0 && checked.length < rows.length;
+  }
+
+  var toolbar = document.getElementById('bulk-toolbar');
+  var count = document.getElementById('bulk-toolbar-count');
+  if (toolbar) toolbar.hidden = checked.length === 0;
+  if (count) count.textContent = checked.length + ' selected';
+}
+
 document.addEventListener('change', function (e) {
   var el = e.target;
   if (!(el instanceof HTMLInputElement) || el.type !== 'checkbox') return;
@@ -70,10 +90,22 @@ document.addEventListener('change', function (e) {
   var rows = table.querySelectorAll('tbody .row-select');
   if (el.hasAttribute('data-select-all')) {
     rows.forEach(function (cb) { cb.checked = el.checked; });
-  } else {
-    var selectAll = table.querySelector('thead [data-select-all]');
-    if (selectAll) {
-      selectAll.checked = rows.length > 0 && Array.prototype.every.call(rows, function (cb) { return cb.checked; });
+  }
+  syncBulkToolbar(document);
+});
+
+document.addEventListener('DOMContentLoaded', function () { syncBulkToolbar(document); });
+document.addEventListener('htmx:afterSwap', function () { syncBulkToolbar(document); });
+
+// Confirm before bulk-deleting the selected documents.
+document.addEventListener('submit', function (e) {
+  var form = e.target;
+  if (form && form.hasAttribute('confirm-bulk-delete')) {
+    var n = document.querySelectorAll('.doc-table tbody .row-select:checked').length;
+    var msg = 'Remove ' + n + (n === 1 ? ' document' : ' documents') +
+      ' from the archive? The file(s) on Telegram will NOT be deleted.';
+    if (n === 0 || !window.confirm(msg)) {
+      e.preventDefault();
     }
   }
 });

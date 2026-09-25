@@ -361,6 +361,69 @@ select.input { appearance: auto; }
 
 /* ---------- Documents table ---------- */
 
+/* Bulk-selection toolbar: hidden (via the `hidden` attribute) until at least
+   one row checkbox is checked — app.js toggles it and keeps the count text
+   in sync. The delete button starts icon-only and expands to reveal its
+   label on hover/focus (see .btn-delete-selected below) rather than showing
+   text all the time. */
+.bulk-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+  padding: var(--s3) var(--s4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.bulk-toolbar[hidden] { display: none; }
+
+.bulk-toolbar-count {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.btn-delete-selected {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  background: transparent;
+  color: var(--danger);
+  cursor: pointer;
+  transition: background 0.12s ease, padding-right 0.18s ease, gap 0.18s ease;
+}
+.btn-delete-selected:hover,
+.btn-delete-selected:focus-visible {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  padding-right: 0.85rem;
+  gap: var(--s2);
+}
+.btn-delete-selected .trash-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.btn-delete-selected .btn-label {
+  display: inline-block;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: max-width 0.18s ease, opacity 0.12s ease;
+}
+.btn-delete-selected:hover .btn-label,
+.btn-delete-selected:focus-visible .btn-label {
+  max-width: 10rem;
+  opacity: 1;
+}
+
 .table-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -408,12 +471,6 @@ select.input { appearance: auto; }
   border-right: 1px solid var(--border);
 }
 .doc-table thead .col-select { background: var(--surface-2); }
-/* .doc-table thead th sets text-align: left with higher specificity
-   (two type selectors + a class) than .col-select's single class, so it was
-   silently winning and left-aligning just the header checkbox while the
-   body cells (no competing text-align rule) stayed centered. Matching that
-   specificity here restores centering for the header cell too. */
-.doc-table thead th.col-select { text-align: center; }
 
 .row-select {
   width: 16px;
@@ -434,7 +491,7 @@ select.input { appearance: auto; }
 
 .doc-table thead th {
   height: 2.75rem;
-  text-align: left;
+  text-align: center;
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -449,6 +506,7 @@ select.input { appearance: auto; }
 .th-sort {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--s1);
   padding: var(--s3) var(--s4);
   color: inherit;
