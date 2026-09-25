@@ -1,6 +1,6 @@
 # TeleDoc
 
-A Telegram-channel document archive with a [Papra](https://papra.app)-style web UI — written in Go, single binary, SQLite, no Node/TypeScript toolchain.
+A Telegram-channel document archive with simple UI, written in Go, single binary using SQLite
 
 Upload documents (pdf, docx, txt, csv, ...) to a Telegram channel; the bot archives each one, auto-tags it with your **tagging rules**, and a dark, minimal web UI lets you browse, search and filter everything. Clicking a document opens its original Telegram message.
 
