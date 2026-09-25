@@ -75,6 +75,7 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("POST /documents/{id}/tags", s.handleDocumentTag)
 	protected.HandleFunc("POST /documents/{id}/delete", s.handleDocumentDelete)
 	protected.HandleFunc("POST /documents/bulk-delete", s.handleDocumentsBulkDelete)
+	protected.HandleFunc("POST /documents/bulk-tag", s.handleDocumentsBulkTag)
 	protected.HandleFunc("GET /tags", s.handleTags)
 	protected.HandleFunc("POST /tags", s.handleCreateTag)
 	protected.HandleFunc("POST /tags/{id}/delete", s.handleDeleteTag)
@@ -555,6 +556,33 @@ func (s *Server) handleDocumentsBulkDelete(w http.ResponseWriter, r *http.Reques
 		setFlash(w, "Could not delete the selected documents.")
 	default:
 		setFlash(w, fmt.Sprintf("%d document(s) deleted, %d failed.", deleted, failed))
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// handleDocumentsBulkTag attaches one or more tags to every selected document
+// — the "Tag selected" toolbar above the table. Tags arrive as one "tags"
+// form value per chosen tag, document IDs as one "doc_ids" value per selected
+// row checkbox (each row checkbox carries form="bulk-tag-form").
+func (s *Server) handleDocumentsBulkTag(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	ids := parseIDs(r.PostForm["doc_ids"])
+	tagIDs := parseIDs(r.PostForm["tags"])
+	if len(ids) == 0 || len(tagIDs) == 0 {
+		setFlash(w, "Select at least one document and one tag.")
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	created, err := s.store.TagDocuments(ids, tagIDs)
+	if err != nil {
+		setFlash(w, "Could not tag the selected documents: "+err.Error())
+	} else if created == 0 {
+		setFlash(w, "Selected documents already had those tags — nothing to do.")
+	} else {
+		setFlash(w, fmt.Sprintf("Tagged %d document(s).", created))
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

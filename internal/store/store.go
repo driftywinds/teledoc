@@ -434,6 +434,36 @@ func (s *Store) RemoveTagFromDocument(docID, tagID int64) error {
 	return err
 }
 
+// TagDocuments links every tag in tagIDs to every document in docIDs in one
+// transaction — the "Tag selected" bulk action. Idempotent: pairs that are
+// already linked are skipped. Returns the number of new links created.
+func (s *Store) TagDocuments(docIDs, tagIDs []int64) (int, error) {
+	if len(docIDs) == 0 || len(tagIDs) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("tag documents: %w", err)
+	}
+	defer tx.Rollback()
+	created := 0
+	for _, docID := range docIDs {
+		for _, tagID := range tagIDs {
+			res, err := tx.Exec(`INSERT OR IGNORE INTO document_tags (document_id, tag_id) VALUES (?, ?)`, docID, tagID)
+			if err != nil {
+				return 0, fmt.Errorf("tag document %d with tag %d: %w", docID, tagID, err)
+			}
+			if n, _ := res.RowsAffected(); n > 0 {
+				created++
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("tag documents: %w", err)
+	}
+	return created, nil
+}
+
 // ---------------------------------------------------------------------------
 // Rules
 

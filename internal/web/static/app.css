@@ -385,6 +385,116 @@ select.input { appearance: auto; }
   font-weight: 600;
 }
 
+.bulk-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+/* "Tag selected": icon-only until hover/focus, expanding to reveal its
+   label — same interaction as .btn-delete-selected, primary colour. */
+.btn-tag-selected {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  font: inherit; /* buttons don't inherit fonts by default — match .btn (Inter) */
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  transition: background 0.12s ease, padding-right 0.18s ease, gap 0.18s ease;
+}
+.btn-tag-selected:hover,
+.btn-tag-selected:focus-visible {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  padding-right: 0.85rem;
+  gap: var(--s2);
+}
+.btn-tag-selected .tag-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.btn-tag-selected .btn-label {
+  display: inline-block;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: max-width 0.18s ease, opacity 0.12s ease;
+}
+.btn-tag-selected:hover .btn-label,
+.btn-tag-selected:focus-visible .btn-label {
+  max-width: 10rem;
+  opacity: 1;
+}
+
+/* Dropdown panel for choosing which tags to apply to the selection.
+   Anchored to .bulk-tag-wrap so it can overlap the table below. */
+.bulk-tag-wrap { position: relative; }
+
+.bulk-tag-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  width: 240px;
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+.bulk-tag-panel[hidden] { display: none; }
+
+.bulk-tag-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.bulk-tag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bulk-tag-option {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0.35rem var(--s2);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--foreground);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease;
+}
+.bulk-tag-option:hover { background: var(--surface-2); }
+.bulk-tag-option .pill-dot { flex: none; }
+.bulk-tag-option input {
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.bulk-tag-option input:checked + .pill-dot { outline: 2px solid var(--tag); outline-offset: 2px; }
+
+.bulk-tag-apply { align-self: flex-end; }
+
 .btn-delete-selected {
   display: inline-flex;
   align-items: center;

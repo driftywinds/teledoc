@@ -97,6 +97,70 @@ document.addEventListener('change', function (e) {
 document.addEventListener('DOMContentLoaded', function () { syncBulkToolbar(document); });
 document.addEventListener('htmx:afterSwap', function () { syncBulkToolbar(document); });
 
+// ---------------------------------------------------------------------------
+// Bulk tagging: "Tag selected" opens a dropdown of tags to apply to every
+// selected row. Checkboxes inside the panel point at #bulk-tag-form via their
+// form= attribute, so the browser submits doc_ids + tags together.
+// All listeners live on document and look elements up at event time: the
+// toolbar is re-rendered by every htmx swap, so captured references would
+// go stale after the first filter/sort/page change.
+function bulkTagPanel() { return document.getElementById('bulk-tag-panel'); }
+function bulkTagToggle() { return document.getElementById('bulk-tag-toggle'); }
+function setBulkTagPanelOpen(open) {
+  var panel = bulkTagPanel(), toggle = bulkTagToggle();
+  if (panel) panel.hidden = !open;
+  if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+document.addEventListener('click', function (e) {
+  var toggle = bulkTagToggle();
+  if (toggle && e.target.closest('#bulk-tag-toggle')) {
+    var panel = bulkTagPanel();
+    if (panel) setBulkTagPanelOpen(panel.hidden);
+    return;
+  }
+  // Outside click closes the panel (leaves the chosen checkboxes as-is).
+  var panel = bulkTagPanel();
+  if (panel && !panel.hidden && !e.target.closest('.bulk-tag-wrap')) {
+    setBulkTagPanelOpen(false);
+  }
+});
+
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Escape') return;
+  var panel = bulkTagPanel();
+  if (panel && !panel.hidden) {
+    setBulkTagPanelOpen(false);
+    var toggle = bulkTagToggle();
+    if (toggle) toggle.focus();
+  }
+});
+
+// A fresh table after filtering/sorting/paging means a new selection: the
+// swapped-in toolbar renders hidden anyway, but make sure no stale state
+// (e.g. an open panel) survives into the new one.
+document.addEventListener('htmx:afterSwap', function () {
+  setBulkTagPanelOpen(false);
+});
+
+// The row checkboxes already belong to #bulk-delete-form (an element can only
+// have one form owner), so the browser can't include them in the #bulk-tag-form
+// submission natively. Copy the checked row IDs in as hidden inputs at submit
+// time instead — changes made in the submit listener are picked up by the
+// serialization that follows it.
+document.addEventListener('submit', function (e) {
+  var form = e.target;
+  if (!form || form.id !== 'bulk-tag-form') return;
+  form.querySelectorAll('input[name="doc_ids"]').forEach(function (n) { n.remove(); });
+  document.querySelectorAll('.doc-table tbody .row-select:checked').forEach(function (cb) {
+    var hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = 'doc_ids';
+    hidden.value = cb.value;
+    form.appendChild(hidden);
+  });
+});
+
 // Confirm before bulk-deleting the selected documents.
 document.addEventListener('submit', function (e) {
   var form = e.target;
