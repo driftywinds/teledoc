@@ -48,3 +48,50 @@ func TestHasDocumentWithFileName(t *testing.T) {
 		t.Fatalf("expected no duplicate across chats, got dup=%v err=%v", dup, err)
 	}
 }
+
+// EnsureTag backs caption-hashtag tagging: an existing tag must win over
+// creation regardless of the casing it was requested in, and a brand-new tag
+// is stored lowercased so the tag list stays canonical.
+func TestEnsureTagCaseInsensitive(t *testing.T) {
+	st, err := New(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	created, err := st.CreateTag("Work")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Any casing of an existing tag resolves to that tag.
+	for _, name := range []string{"work", "WORK", "WoRk"} {
+		id, err := st.EnsureTag(name)
+		if err != nil {
+			t.Fatalf("EnsureTag(%q): %v", name, err)
+		}
+		if id != created.ID {
+			t.Fatalf("EnsureTag(%q) = %d, want existing tag %d", name, id, created.ID)
+		}
+	}
+
+	// A new tag is created lowercased and stays stable across calls.
+	id1, err := st.EnsureTag("Invoices")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, err := st.EnsureTag("INVOICES")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id1 != id2 {
+		t.Fatalf("EnsureTag not stable: %d vs %d", id1, id2)
+	}
+	var name string
+	if err := st.db.QueryRow(`SELECT name FROM tags WHERE id = ?`, id1).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	if name != "invoices" {
+		t.Fatalf("new tag stored as %q, want %q", name, "invoices")
+	}
+}

@@ -422,9 +422,19 @@ func (s *Store) ListTags() ([]Tag, error) {
 	return tags, rows.Err()
 }
 
-// EnsureTag returns the id of the tag with the given name, creating it if needed.
+// EnsureTag returns the id of the tag with the given name, reusing an
+// existing tag when one matches case-insensitively (e.g. "Work" is returned
+// for a requested "work") and creating a new tag otherwise.
 func (s *Store) EnsureTag(name string) (int64, error) {
-	t, err := s.CreateTag(name)
+	var id int64
+	err := s.db.QueryRow(`SELECT id FROM tags WHERE name COLLATE NOCASE = ?`, name).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, fmt.Errorf("find tag: %w", err)
+	}
+	t, err := s.CreateTag(strings.ToLower(name))
 	if err != nil {
 		return 0, err
 	}

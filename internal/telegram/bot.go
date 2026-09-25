@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -140,6 +141,36 @@ const (
 	reactDuplicate = "👀" // a file with this name was already archived before
 )
 
+// hashtagEntities extracts #hashtag texts from a message caption using
+// Telegram's own hashtag entities, so parsing matches exactly what clients
+// highlight. Entity offsets/lengths are measured in UTF-16 code units, which
+// differ from byte offsets whenever the caption contains emoji or other
+// non-BMP characters; the caption is converted to UTF-16 first and hashtag
+// spans are then decoded back to Go strings.
+func hashtagEntities(caption string, entities []models.MessageEntity) []string {
+	if caption == "" {
+		return nil
+	}
+	units := utf16.Encode([]rune(caption))
+	var out []string
+	seen := map[string]bool{}
+	for _, ent := range entities {
+		if ent.Type != models.MessageEntityTypeHashtag {
+			continue
+		}
+		from, to := ent.Offset, ent.Offset+ent.Length
+		if from < 0 || to > len(units) || from >= to {
+			continue
+		}
+		ht := string(utf16.Decode(units[from:to]))
+		if !seen[ht] {
+			seen[ht] = true
+			out = append(out, ht)
+		}
+	}
+	return out
+}
+
 // handleUpdate is the entry point for every Telegram update.
 func (b *Bot) handleUpdate(ctx context.Context, update *models.Update) {
 	msg := update.ChannelPost
@@ -224,9 +255,38 @@ func (b *Bot) ingest(ctx context.Context, msg *models.Message) (ingestStatus, er
 	}
 	stored.ID = id
 
+	// Caption hashtags tag the document directly, bypassing the rules engine
+	// entirely (Telegram-native tagging): an existing tag wins regardless of
+	// its casing (EnsureTag resolves case-insensitively), otherwise a new tag
+	// is created. A failure here fails the whole tagging step, so the channel
+	// shows the needs-attention reaction.
+	var tagErr error
+	hts := hashtagEntities(msg.Caption, msg.CaptionEntities)
+	if len(hts) > 0 {
+		b.log.Printf("telegram: caption hashtags on %q: %s", fileName, strings.Join(hts, " "))
+		for _, ht := range hts {
+			name := strings.TrimPrefix(ht, "#")
+			if name == "" {
+				continue
+			}
+			tagID, err := b.store.EnsureTag(name)
+			if err != nil {
+				tagErr = fmt.Errorf("ensure caption tag %q: %w", name, err)
+				break
+			}
+			if _, err := b.store.AddTagToDocument(stored.ID, tagID); err != nil {
+				tagErr = fmt.Errorf("apply caption tag %q: %w", name, err)
+				break
+			}
+		}
+	}
+
 	added, err := b.engine.ApplyRulesToDocument(stored)
-	if err != nil {
-		return ingestArchived, fmt.Errorf("tag %q: %w", fileName, err)
+	if tagErr == nil {
+		tagErr = err
+	}
+	if tagErr != nil {
+		return ingestArchived, fmt.Errorf("tag %q: %w", fileName, tagErr)
 	}
 
 	if len(added) > 0 {

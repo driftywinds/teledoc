@@ -1,0 +1,31 @@
+{
+  "state": "Teledoc: a self-hosted Telegram channel document archive. A bot watches a Telegram channel; every document posted there is archived into a local SQLite database with auto-tagging, browsable via a web UI.\n\nFeature being implemented: documents posted to the channel can carry a caption, and #hashtags in that caption should tag the document directly on upload, bypassing the rules engine entirely. Example: caption 'quarterly report #work' tags the document under tag 'work'. If a tag with that name already exists in any casing (e.g. existing tag 'Work'), the document is tagged under the EXISTING tag; if no tag with that name exists in any casing, a new tag is created and applied. Rules-engine tagging still runs as before, independently.\n\nContext for the questions: the bot processes one update at a time (serialized). The status-reaction feature already exists: the bot reacts to the document message with a thumbs-up when archived+tagged cleanly, an eyes emoji when the filename is a duplicate reupload, and a thinking-face emoji when archiving-or-tagging FAILED (needs attention). The web UI is the only way tags are ever removed.",
+  "model": "jev-latest",
+  "questions": {
+    "extraction_method": {
+      "type": "choice",
+      "instructions": "How should the bot extract #hashtags from a document caption? Pick one method. Background: Telegram clients auto-detect hashtags and deliver them as 'hashtag' entities in caption_entities, with offsets/lengths measured in UTF-16 code units (which differ from byte offsets when the caption contains emoji), so the entity path needs UTF-16-aware slicing. A regex path would just scan the caption text for #word patterns.",
+      "criteria": {
+        "entities_only": "Use Telegram's own caption_entities (type=hashtag) with UTF-16-safe slicing; no fallback. Telegram-native, handles unicode and punctuation correctly, but silently finds nothing if a client omits entities (rare; standard clients always emit them).",
+        "entities_plus_regex": "Entities primary; if none found but the caption contains a '#', fall back to a regex scan. Most robust against odd clients, but two code paths can disagree on edge cases (e.g. unicode hashtags) and it doubles the parsing surface.",
+        "regex_only": "Ignore entities; regex-scan the caption for #[A-Za-z0-9_]+. One simple code path, but misses non-ASCII hashtags and diverges from how Telegram itself highlights hashtags in the app."
+      }
+    },
+    "partial_failure_reaction": {
+      "type": "choice",
+      "instructions": "The caption hashtags were applied successfully, but the rules-engine tagging step then failed (e.g. database error reading rules). Which status reaction should the message get? Pick one.",
+      "criteria": {
+        "flag_attention": "Thinking-face (the 'tagging failed, needs attention' reaction): some tagging genuinely failed, so the channel should show it needs a look, even though the user's own hashtags landed.",
+        "react_archived": "Thumbs-up (the normal 'archived' reaction): the document is archived and the human-typed hashtags worked; a rules failure is only visible in the logs."
+      }
+    },
+    "new_tag_casing": {
+      "type": "choice",
+      "instructions": "When a caption hashtag does NOT match any existing tag and a new tag must be created, what should the new tag's stored name be? (Existing tags are always reused via case-insensitive match regardless of this choice.)",
+      "criteria": {
+        "as_typed": "Store it exactly as the user typed it in the caption: #Work creates tag 'Work'. Preserves the author's capitalization; archive may accumulate case variants over time.",
+        "lowercase": "Store it lowercased: #Work creates tag 'work'. Canonical, consistent tag list over time; loses the author's capitalization."
+      }
+    }
+  }
+}
