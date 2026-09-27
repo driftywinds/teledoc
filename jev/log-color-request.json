@@ -1,0 +1,31 @@
+{
+  "state": "TeleDoc is a single-binary Go app. Today every log line is produced by Go's standard log package with prefix+LstdFlags and looks like: 'tg 2026/09/27 19:54:46 archived \"x.pdf\" ...' or 'web 2026/09/27 19:54:46 download triggered ...' — an origin word (tg, tg-api, web) then date+time then message, all plain text on stdout. The user wants ANSI coloring: the origin word in yellow, the date+time in purple, for ALL loggers including the default one. Platform: Windows (user runs via PowerShell or Git Bash, typically Windows Terminal or mintty, both ANSI-capable; legacy conhost needs a one-time Virtual Terminal Processing enable per process). The same binary also runs in Docker where stdout is a pipe and 'docker logs' captures it, and users may redirect to a file. Go's log package cannot color its own timestamp, so the plan is a small io.Writer wrapper that prepends the colored timestamp+origin itself (log flags zeroed).",
+  "model": "jev-latest",
+  "questions": {
+    "redirect_behavior": {
+      "type": "choice",
+      "instructions": "What should happen when the log output is NOT a terminal (redirected to a file, piped, or captured by docker logs)?",
+      "criteria": {
+        "auto_disable": "Auto-disable colors when the output is not a terminal (stdlib ModeCharDevice check): terminals get color, files and docker logs stay clean plain text.",
+        "always_on": "Always emit ANSI codes regardless of destination (simplest, but log files fill with escape garbage).",
+        "env_override": "Auto-disable like the first option, plus an env var (e.g. FORCE_COLOR=1) to force colors on even when piped."
+      }
+    },
+    "field_order": {
+      "type": "choice",
+      "instructions": "Which field order should the colored log line use?",
+      "criteria": {
+        "keep_origin_first": "Keep the current order: origin word first, then date+time, then message (e.g. 'tg 2026/09/27 19:54:46 archived ...') — only the colors change.",
+        "time_first": "Switch to date+time first, then origin, then message (e.g. '2026/09/27 19:54:46 tg archived ...'), the common syslog/journald visual order."
+      }
+    },
+    "legacy_console_effort": {
+      "type": "noul",
+      "instructions": "Is it worth adding a best-effort Windows Virtual Terminal Processing enable (via the already-present golang.org/x/sys/windows, ~10 lines, build-tagged, errors ignored) so colors also render in legacy cmd/conhost windows, instead of relying only on modern terminals?",
+      "criteria": {
+        "true": "Yes: add the best-effort VT enable for legacy console support.",
+        "false": "No: modern terminals (Windows Terminal, mintty, VS Code) suffice; keep it stdlib-only."
+      }
+    }
+  }
+}

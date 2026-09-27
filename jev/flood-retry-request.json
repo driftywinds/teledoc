@@ -1,0 +1,48 @@
+{
+  "state": "TeleDoc context: a Go Telegram bot ingests documents posted to a channel (long polling, handlers deliberately serialized because the SQLite store is single-writer). For every ingested document the bot sets an emoji reaction on that message; the channel's reactions double as the archive's status indicator (archived / duplicate / tagging-failed-needs-attention). Incident: a user mass-resends ~80 files to backfill the archive; ingestion succeeds for each (log shows 'archived ...' lines about 1 second apart), but setting each reaction hits Telegram's flood control: 'too many requests: retry after 38... 37... 36... 31... 29' — the per-chat reaction quota is exhausted, each subsequent call returns HTTP 429 with a decreasing retry_after, and every reaction is currently lost (they are only logged and swallowed). The bot library (go-telegram/bot) returns errors as *TooManyRequestsError{RetryAfter int} and has NO built-in rate limiter or retry. Constraints: (1) ingestion of subsequent documents must not stall for tens of seconds — during a mass import the serialized handler would otherwise stop archiving while a reaction sleeps; (2) the reactions matter: the tagging-failed reaction (🤔) is how the user learns a document needs attention, so silently dropping reactions is only acceptable as a last resort; (3) the fix should also stop the wall of 429 log lines; (4) the same flood control can hit the one-shot getFile call the web UI makes when a user clicks download, though there the request must fail reasonably fast rather than hang the browser.",
+  "model": "jev-latest",
+  "questions": {
+    "reaction_flood_strategy": {
+      "type": "choice",
+      "instructions": "How should the bot handle reaction calls that hit Telegram flood control (429 + retry_after)?",
+      "criteria": {
+        "async_queue_worker": "Reactions go through a per-process background queue: the ingestion path only enqueues (never blocks), one worker goroutine sends them paced ~1/second, and on 429 it waits retry_after (plus a small buffer) and retries that reaction a bounded number of times before giving up with one clear log line.",
+        "inline_blocking_retry": "Keep reactions synchronous in the ingestion path but sleep retry_after and retry a bounded number of times — simple, but a 30-40s sleep stalls archiving of every subsequent document during a mass import.",
+        "drop_on_flood": "Accept the loss: on 429 just log once and move on — zero complexity, but mass imports lose all status reactions including the tagging-failed warning."
+      }
+    },
+    "proactive_pacing": {
+      "type": "choice",
+      "instructions": "Besides retrying after a 429, should the bot pace reaction calls proactively?",
+      "criteria": {
+        "pace_one_per_second": "Yes: the worker always waits ~1s between reaction calls (well under Telegram's observed per-chat reaction quota, and the incident's retry_after countdown of 38→29s over ~9s implies the bucket refills about 1/second).",
+        "reactive_only": "No pacing: send immediately and rely purely on 429 retry_after backoff."
+      }
+    },
+    "async_ingestion_ok": {
+      "type": "noul",
+      "instructions": "Is it acceptable that with the queue approach a document's reaction may appear on the message several seconds (or during heavy floods, minutes) after the 'archived' log line, since ingestion no longer waits for the reaction?",
+      "criteria": {
+        "true": "Acceptable: the reaction is a status indicator, not a transactional guarantee; eventual arrival is fine.",
+        "false": "Not acceptable: the reaction must be set before the document counts as processed."
+      }
+    },
+    "retry_budget": {
+      "type": "choice",
+      "instructions": "How many times should the worker retry one reaction before giving up (each 429 supplies a fresh retry_after, so a retry loop could in principle chase the quota forever)?",
+      "criteria": {
+        "three_attempts": "3 attempts total: survive a burst, but give up within ~1-2 minutes worst case.",
+        "five_attempts": "5 attempts total: longer persistence, up to ~4-5 minutes worst case.",
+        "until_success": "Keep retrying indefinitely while the process lives — guarantees every reaction eventually lands but a permanently flooded chat means unbounded queue growth."
+      }
+    },
+    "getfile_retry": {
+      "type": "noul",
+      "instructions": "Should the web UI's one-shot getFile call (user clicked download; browser is waiting) also retry on 429, but with a small total wait budget (~10 seconds) after which it fails with a clear error?",
+      "criteria": {
+        "true": "Yes: retry within a ~10s budget, then fail with the flood error message.",
+        "false": "No: one attempt only, fail immediately on 429."
+      }
+    }
+  }
+}

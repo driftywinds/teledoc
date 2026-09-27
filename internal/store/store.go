@@ -17,17 +17,22 @@ type Store struct {
 }
 
 // Document is one file posted in the Telegram channel. File bytes stay in
-// Telegram; we only keep metadata plus the message link.
+// Telegram; we only keep metadata plus the message link. FileID is the
+// Telegram file id, kept so the web UI can re-fetch the bytes on demand
+// (temp downloads); FileUniqueID is Telegram's stable id for the underlying
+// file (unchanged across deliveries). Older rows may have empty values.
 type Document struct {
-	ID          int64
-	FileName    string
-	MimeType    string
-	Extension   string
-	FileSize    int64
-	ChatID      int64
-	MessageID   int
-	MessageLink string
-	UploadedAt  time.Time
+	ID           int64
+	FileName     string
+	MimeType     string
+	Extension    string
+	FileSize     int64
+	ChatID       int64
+	MessageID    int
+	MessageLink  string
+	FileID       string
+	FileUniqueID string
+	UploadedAt   time.Time
 }
 
 // DocumentWithTags is a document plus its tags (for rendering).
@@ -73,6 +78,8 @@ CREATE TABLE IF NOT EXISTS documents (
 	chat_id     INTEGER NOT NULL,
 	message_id  INTEGER NOT NULL,
 	message_link TEXT NOT NULL,
+	telegram_file_id TEXT NOT NULL DEFAULT '',
+	telegram_file_unique_id TEXT NOT NULL DEFAULT '',
 	uploaded_at INTEGER NOT NULL,
 	UNIQUE(chat_id, message_id)
 );
@@ -135,7 +142,61 @@ func New(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("migrate schema: %w", err)
 	}
+	if err := migrateDocumentsFileID(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate schema: %w", err)
+	}
+	if err := migrateDocumentsFileUniqueID(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate schema: %w", err)
+	}
 	return &Store{db: db}, nil
+}
+
+// migrateDocumentsFileUniqueID adds the telegram_file_unique_id column when
+// an existing database's documents table predates it.
+func migrateDocumentsFileUniqueID(db *sql.DB) error {
+	return addColumnIfMissing(db, "documents", "telegram_file_unique_id", `ALTER TABLE documents ADD COLUMN telegram_file_unique_id TEXT NOT NULL DEFAULT ''`)
+}
+
+// addColumnIfMissing runs alter unless pragma inspection shows the column
+// already exists on table.
+func addColumnIfMissing(db *sql.DB, table, column, alter string) error {
+	rows, err := db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		return err
+	}
+	has := false
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notNull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == column {
+			has = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if has {
+		return nil
+	}
+	_, err = db.Exec(alter)
+	return err
+}
+
+// migrateDocumentsFileID adds the telegram_file_id column when an existing
+// database's documents table predates it. Older rows keep an empty value
+// until a delivery (or the BackfillFileIDs pass below) fills it.
+func migrateDocumentsFileID(db *sql.DB) error {
+	return addColumnIfMissing(db, "documents", "telegram_file_id", `ALTER TABLE documents ADD COLUMN telegram_file_id TEXT NOT NULL DEFAULT ''`)
 }
 
 // migrateDocumentTags adds the via_hashtag provenance column when an existing
@@ -186,9 +247,9 @@ func (s *Store) Close() error { return s.db.Close() }
 func (s *Store) UpsertDocument(d Document) (int64, bool, error) {
 	res, err := s.db.Exec(`
 		INSERT OR IGNORE INTO documents
-			(file_name, mime_type, extension, file_size, chat_id, message_id, message_link, uploaded_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		d.FileName, d.MimeType, d.Extension, d.FileSize, d.ChatID, d.MessageID, d.MessageLink, d.UploadedAt.Unix())
+			(file_name, mime_type, extension, file_size, chat_id, message_id, message_link, telegram_file_id, telegram_file_unique_id, uploaded_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.FileName, d.MimeType, d.Extension, d.FileSize, d.ChatID, d.MessageID, d.MessageLink, d.FileID, d.FileUniqueID, d.UploadedAt.Unix())
 	if err != nil {
 		return 0, false, fmt.Errorf("upsert document: %w", err)
 	}
@@ -196,10 +257,41 @@ func (s *Store) UpsertDocument(d Document) (int64, bool, error) {
 		id, err := s.lastInsertID(res)
 		return id, true, err
 	}
-	// Already archived.
+	// Already archived. Capture the Telegram file id if the row predates
+	// storing one (schema migration), so downloads work without re-upload.
 	var id int64
 	err = s.db.QueryRow(`SELECT id FROM documents WHERE chat_id = ? AND message_id = ?`, d.ChatID, d.MessageID).Scan(&id)
-	return id, false, err
+	if err != nil {
+		return 0, false, err
+	}
+	if d.FileID != "" {
+		_, _ = s.db.Exec(`UPDATE documents SET telegram_file_id = ?, telegram_file_unique_id = ? WHERE id = ? AND telegram_file_id = ''`, d.FileID, d.FileUniqueID, id)
+	}
+	return id, false, nil
+}
+
+// BackfillFileIDs fills the empty telegram_file_id of rows that a fresh
+// delivery of the same file matches: same chat, same file name
+// (case-insensitive), same byte size. This heals rows archived before file
+// ids were stored (and rows written by builds that dropped the id) whenever
+// the user re-sends or re-forwards the file — the only channel through which
+// the bot can ever see a file id for an old row, since Telegram offers no
+// history API. The match is name+size because a delivery of the same file
+// always reports both; a wrong match would attach an id that downloads
+// different bytes under the same name, so any non-empty id is never
+// overwritten. Returns the number of rows healed.
+func (s *Store) BackfillFileIDs(chatID int64, fileName string, size int64, fileID, fileUniqueID string) (int64, error) {
+	res, err := s.db.Exec(`
+		UPDATE documents
+		SET telegram_file_id = ?, telegram_file_unique_id = ?
+		WHERE chat_id = ? AND file_size = ? AND file_name COLLATE NOCASE = ?
+		  AND telegram_file_id = ''`,
+		fileID, fileUniqueID, chatID, size, fileName)
+	if err != nil {
+		return 0, fmt.Errorf("backfill file ids: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 // HasDocumentWithFileName reports whether a document with the same file name
@@ -220,17 +312,30 @@ func (s *Store) HasDocumentWithFileName(chatID int64, fileName string, excludeMe
 // (chat_id, message_id) pair, or sql.ErrNoRows when that message is not in
 // the archive.
 func (s *Store) DocumentByMessage(chatID int64, messageID int) (Document, error) {
+	return documentByRow(s.db.QueryRow(`
+		SELECT id, file_name, mime_type, extension, file_size, chat_id, message_id, message_link, telegram_file_id, telegram_file_unique_id, uploaded_at
+		FROM documents WHERE chat_id = ? AND message_id = ?`, chatID, messageID))
+}
+
+// DocumentByID returns one archived document by its row id, or
+// sql.ErrNoRows when no such document exists.
+func (s *Store) DocumentByID(id int64) (Document, error) {
+	return documentByRow(s.db.QueryRow(`
+		SELECT id, file_name, mime_type, extension, file_size, chat_id, message_id, message_link, telegram_file_id, telegram_file_unique_id, uploaded_at
+		FROM documents WHERE id = ?`, id))
+}
+
+// documentByRow scans the standard eleven-column document SELECT.
+func documentByRow(row *sql.Row) (Document, error) {
 	var d Document
 	var ts int64
-	err := s.db.QueryRow(`
-		SELECT id, file_name, mime_type, extension, file_size, chat_id, message_id, message_link, uploaded_at
-		FROM documents WHERE chat_id = ? AND message_id = ?`, chatID, messageID).
-		Scan(&d.ID, &d.FileName, &d.MimeType, &d.Extension, &d.FileSize, &d.ChatID, &d.MessageID, &d.MessageLink, &ts)
+	err := row.Scan(&d.ID, &d.FileName, &d.MimeType, &d.Extension, &d.FileSize,
+		&d.ChatID, &d.MessageID, &d.MessageLink, &d.FileID, &d.FileUniqueID, &ts)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return Document{}, err
 		}
-		return Document{}, fmt.Errorf("find document by message: %w", err)
+		return Document{}, fmt.Errorf("scan document: %w", err)
 	}
 	d.UploadedAt = time.Unix(ts, 0)
 	return d, nil
@@ -253,7 +358,9 @@ func (s *Store) DeleteDocument(id int64) error {
 		return fmt.Errorf("delete document: %w", err)
 	}
 	return nil
-} // DocumentFilter selects which documents ListDocuments returns.
+}
+
+// DocumentFilter selects which documents ListDocuments returns.
 type DocumentFilter struct {
 	Search   string  // substring match on file name
 	TagIDs   []int64 // documents having ANY of these tags
@@ -320,7 +427,7 @@ func (s *Store) ListDocuments(f DocumentFilter) ([]DocumentWithTags, error) {
 	args = append(args, limit, f.Offset)
 
 	rows, err := s.db.Query(`
-		SELECT id, file_name, mime_type, extension, file_size, chat_id, message_id, message_link, uploaded_at
+		SELECT id, file_name, mime_type, extension, file_size, chat_id, message_id, message_link, telegram_file_id, telegram_file_unique_id, uploaded_at
 		FROM documents
 		WHERE `+where+`
 		ORDER BY `+documentOrderBy(f.SortBy, f.SortDir)+`
@@ -335,7 +442,7 @@ func (s *Store) ListDocuments(f DocumentFilter) ([]DocumentWithTags, error) {
 		var d DocumentWithTags
 		var ts int64
 		if err := rows.Scan(&d.ID, &d.FileName, &d.MimeType, &d.Extension, &d.FileSize,
-			&d.ChatID, &d.MessageID, &d.MessageLink, &ts); err != nil {
+			&d.ChatID, &d.MessageID, &d.MessageLink, &d.FileID, &d.FileUniqueID, &ts); err != nil {
 			return nil, err
 		}
 		d.UploadedAt = time.Unix(ts, 0)
@@ -386,7 +493,7 @@ func (s *Store) DocumentTags(docID int64) ([]Tag, error) {
 // engine) for re-tagging runs.
 func (s *Store) AllDocuments() ([]Document, error) {
 	rows, err := s.db.Query(`
-		SELECT id, file_name, mime_type, extension, file_size, chat_id, message_id, message_link, uploaded_at
+		SELECT id, file_name, mime_type, extension, file_size, chat_id, message_id, message_link, telegram_file_id, telegram_file_unique_id, uploaded_at
 		FROM documents ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -397,7 +504,7 @@ func (s *Store) AllDocuments() ([]Document, error) {
 		var d Document
 		var ts int64
 		if err := rows.Scan(&d.ID, &d.FileName, &d.MimeType, &d.Extension, &d.FileSize,
-			&d.ChatID, &d.MessageID, &d.MessageLink, &ts); err != nil {
+			&d.ChatID, &d.MessageID, &d.MessageLink, &d.FileID, &d.FileUniqueID, &ts); err != nil {
 			return nil, err
 		}
 		d.UploadedAt = time.Unix(ts, 0)

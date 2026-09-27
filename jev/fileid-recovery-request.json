@@ -1,0 +1,31 @@
+{
+  "state": "TeleDoc incident follow-up. The archive stores document METADATA in SQLite (file name, chat id, message id, size) plus a telegram_file_id column added recently so the web UI can fetch file bytes on demand (temp downloads). The bot only ingests NEW messages (it cannot read channel history). Timeline: (1) ~40 documents were archived BEFORE the telegram_file_id column existed, so their rows have an empty file id — downloads for them fail with 'no Telegram file id'. (2) The user re-forwarded all those files into the channel while the bot was running, creating NEW messages that each carried a fresh valid file_id — but an ingestion bug (now identified: the insert literally never copied doc.FileID into the row) dropped every one of them. So the DB now has TWO rows per re-forwarded file: the original pre-migration row (empty file id) and the re-forward row (also empty file id, bug), and Telegram now holds the file twice under two message ids. (3) The bug fix is trivial (one line: set FileID from the incoming message). The open question is how the user's EXISTING rows ever get a file id, given the bot only sees future messages. Telegram file ids are bot-scoped identifiers for a stored file; a NEW delivery of the same media carries a fresh file_id that resolves to the same bytes. The web download uses the stored file id with getFile + the file download URL, subject to the 20 MB Bot API cap.",
+  "model": "jev-latest",
+  "questions": {
+    "recovery_strategy": {
+      "type": "choice",
+      "instructions": "After fixing the one-line ingestion bug, how should existing rows with empty telegram_file_id be healed?",
+      "criteria": {
+        "backfill_on_ingest": "When any new document arrives, also fill the empty file id of OTHER rows in the same chat matching the same file name (case-insensitive) AND same byte size (never overwrite a non-empty id). One more re-forward pass then heals both the original rows and the bugged re-forward rows; no deletions needed.",
+        "delete_and_reupload": "Tell the user to bulk-delete the duplicate rows in the web UI (Telegram files are never deleted by that action) and re-send the files once more after the fix, so fresh rows are created with file ids.",
+        "manual_resync_command": "Build a small admin endpoint/CLI command that iterates rows with empty file ids and does nothing automatic — require the user to click a 're-link' action per document (no Telegram path exists to fetch a file id server-side without a delivery, so this would still need deliveries)."
+      }
+    },
+    "name_size_match_risk": {
+      "type": "noul",
+      "instructions": "Is matching rows by (same chat, same file name case-insensitive, same byte size) acceptable as evidence that a new delivery refers to the same underlying file, given a wrong match would attach a file id that downloads different bytes under the same name?",
+      "criteria": {
+        "true": "Acceptable: same sender + identical name + identical byte size is overwhelmingly the same file, and the backfill never overwrites a non-empty id.",
+        "false": "Not acceptable: require an exact Telegram-side identity (e.g. file_unique_id) before backfilling."
+      }
+    },
+    "edit_path_backfill": {
+      "type": "noul",
+      "instructions": "Should the caption-edit path (the bot receives edited_document/edited_channel_post updates for old messages, which do carry Document.file_id) also backfill the empty file id of its own archived row?",
+      "criteria": {
+        "true": "Yes: editing an old post's caption in Telegram then becomes a zero-effort way to heal that specific document's file id.",
+        "false": "No: keep the edit path strictly for hashtag sync."
+      }
+    }
+  }
+}

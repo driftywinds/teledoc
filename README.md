@@ -19,6 +19,8 @@ Telegram channel ──uploads──> Bot (long polling) ──> tagging rules �
 
 The bot also reacts to each document message in the channel with a status emoji (👍 archived · 👀 duplicate · 🤔 tagging failed) — see [Status reactions](#status-reactions).
 
+**Mass imports:** re-uploading a folder of files to backfill the archive works — ingestion keeps pace (~1 file/second) and archiving is never throttled. Reactions are sent by a background queue at ~1/second (Telegram's reaction quota is much smaller than the upload quota), so during a big import the 👍 may trail the archive by a few seconds per file; if a reaction still hits flood control, the bot waits out Telegram's `retry_after` and retries (up to 3 attempts) instead of dropping it.
+
 - **Bots cannot read channel history.** The bot only sees documents uploaded *after* it is added to the channel as an admin. You can reuse an existing channel (old files won't appear) or make a fresh dedicated one.
 - **Metadata only** — file bytes stay in Telegram; the archive stores names, sizes, mime types, tags and message links, so there's no 20 MB Bot API download cap to worry about. Deleting a document in the web UI removes only the archive entry — the file stays on Telegram.
 - **Message links**: public channels get `t.me/<username>/<id>`; private channels get `t.me/c/<id>/<msg>`, which opens for channel members (you) only.
@@ -96,6 +98,32 @@ The SQLite database persists in the `teledoc-data` volume at `/data/teledoc.db`.
 | `ADMIN_PASSWORD` | *(empty)* | Web UI password; empty = no auth (trusted LAN only) |
 | `DB_PATH` | `teledoc.db` | SQLite database location |
 | `LISTEN_ADDR` | `:9879` | Web UI listen address |
+| `TEMP_DIR` | `<os temp>/teledoc-downloads` | Where downloaded files live before being served |
+| `TEMP_FILE_TTL_MINUTES` | `10` | How long a downloaded file stays available |
+
+## Downloading documents
+
+Every document row has a download button next to the delete button.
+
+- **Files up to 20 MB** (the Bot API download cap) are fetched from Telegram
+  into `TEMP_DIR` and served straight from the site at a URL like
+  `/temp/<id>/<file name>` — which keeps working unchanged behind a reverse
+  proxy on your own domain. The file stays available for
+  `TEMP_FILE_TTL_MINUTES` minutes, then it is deleted; clicking download
+  again fetches it fresh. Clicking download again **inside** the window
+  re-opens the same file without re-downloading it or restarting the timer.
+- **Files over 20 MB** open the document's Telegram message instead — bots
+  cannot fetch those, so Telegram is the only way to get them.
+- Temp URLs are guarded by the same login as the rest of the site (when
+  `ADMIN_PASSWORD` is set), so a leaked `/temp/...` link is useless to
+  someone without an active session.
+- **Archived before downloads existed?** A download needs the Telegram file
+  id, which the bot only receives when a file is delivered to it. Re-send or
+  re-forward the file in the channel once — the bot links the new delivery
+  to the existing archive entry automatically (matched by channel, file name
+  and size) and downloads start working; no need to delete anything.
+- Behind Caddy (or any reverse proxy), no extra configuration is needed: the
+  proxy just forwards `/temp/*` like every other path.
 
 ## Development
 

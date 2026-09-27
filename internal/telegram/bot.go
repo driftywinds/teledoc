@@ -34,6 +34,8 @@ type Bot struct {
 	engine *rules.Engine
 	log    *log.Logger
 
+	reactions *reactionQueue // paced background queue; see reactions.go
+
 	mu        sync.Mutex
 	usernames map[int64]string // chat id -> public username, cached for links
 }
@@ -101,6 +103,7 @@ func New(token string, st *store.Store, engine *rules.Engine, logger *log.Logger
 		return nil, err
 	}
 	b.api = api
+	b.reactions = newReactionQueue(api, b.log)
 	return b, nil
 }
 
@@ -128,6 +131,7 @@ func botNewWithRetry(token string, opts []bot.Option, logger *log.Logger) (*bot.
 
 // Run blocks, long-polling Telegram until ctx is canceled.
 func (b *Bot) Run(ctx context.Context) {
+	b.reactions.Start(ctx)
 	b.log.Printf("telegram: long polling started")
 	b.api.Start(ctx)
 }
@@ -238,14 +242,16 @@ func (b *Bot) ingest(ctx context.Context, msg *models.Message) (ingestStatus, er
 
 	uploadedAt := time.Unix(int64(msg.Date), 0)
 	stored := store.Document{
-		FileName:    fileName,
-		MimeType:    mimeType,
-		Extension:   ext,
-		FileSize:    doc.FileSize,
-		ChatID:      msg.Chat.ID,
-		MessageID:   msg.ID,
-		MessageLink: link,
-		UploadedAt:  uploadedAt,
+		FileName:     fileName,
+		MimeType:     mimeType,
+		Extension:    ext,
+		FileSize:     doc.FileSize,
+		ChatID:       msg.Chat.ID,
+		MessageID:    msg.ID,
+		MessageLink:  link,
+		FileID:       doc.FileID,
+		FileUniqueID: doc.FileUniqueID,
+		UploadedAt:   uploadedAt,
 	}
 
 	// Duplicate-filename check runs before the insert and excludes this very
@@ -261,10 +267,28 @@ func (b *Bot) ingest(ctx context.Context, msg *models.Message) (ingestStatus, er
 	if err != nil {
 		return ingestArchived, fmt.Errorf("store document: %w", err)
 	}
+	if created {
+		stored.ID = id
+	}
+
+	// Every delivery of the same media carries a fresh file_id (and a stable
+	// file_unique_id). Rows archived before file ids were stored have an
+	// empty one, which blocks their temp downloads; heal any of them this
+	// delivery matches (same chat, same file name, same byte size), including
+	// rows created by earlier buggy builds. Never overwrites a live id.
+	if doc.FileID != "" && doc.FileSize > 0 {
+		healed, err := b.store.BackfillFileIDs(msg.Chat.ID, fileName, doc.FileSize, doc.FileID, doc.FileUniqueID)
+		if err != nil {
+			// Healing is opportunistic; never fail ingestion over it.
+			b.log.Printf("telegram: file-id backfill for %q: %v", fileName, err)
+		} else if healed > 0 {
+			b.log.Printf("telegram: healed missing file id(s) for %d row(s) named %q", healed, fileName)
+		}
+	}
+
 	if !created {
 		return ingestAlreadyArchived, nil // duplicate delivery (e.g. bot restart overlap); already archived
 	}
-	stored.ID = id
 
 	// Caption hashtags tag the document directly, bypassing the rules engine
 	// entirely (Telegram-native tagging). A failure here fails the whole
@@ -338,20 +362,17 @@ func (b *Bot) applyCaptionHashtags(docID int64, msg *models.Message) error {
 	return err
 }
 
-// react sets a single emoji reaction on the document message. Failures are
-// logged and swallowed: a status reaction must never break ingestion.
-func (b *Bot) react(ctx context.Context, chatID int64, messageID int, emoji string) {
-	_, err := b.api.SetMessageReaction(ctx, &bot.SetMessageReactionParams{
-		ChatID:    chatID,
-		MessageID: messageID,
-		Reaction: []models.ReactionType{{
-			Type:              models.ReactionTypeTypeEmoji,
-			ReactionTypeEmoji: &models.ReactionTypeEmoji{Emoji: emoji},
-		}},
-	})
-	if err != nil {
-		b.log.Printf("telegram: set reaction %q on message %d in chat %d: %v", emoji, messageID, chatID, err)
+// react queues a single emoji reaction on the document message. The send
+// happens on the background reaction queue (~1/second, retrying on flood
+// control — see reactions.go), so a mass import can never stall ingestion on
+// Telegram's small reaction quota, and the reaction is no longer lost when
+// the quota runs out. Queueing is fire-and-forget: reactions are status
+// marks, never a reason to fail a document that has already been archived.
+func (b *Bot) react(_ context.Context, chatID int64, messageID int, emoji string) {
+	if b.reactions == nil {
+		return // never constructed (tests, or a construction failure)
 	}
+	b.reactions.enqueue(chatID, messageID, emoji)
 }
 
 // messageLink builds the t.me link for a channel/group message:

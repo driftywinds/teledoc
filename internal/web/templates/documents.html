@@ -100,6 +100,7 @@
             <th class="col-tags">Tags</th>
             <th class="col-date sort-col" data-col="date"><a class="th-sort" href="/documents?{{.SortURL "date"}}" hx-get="/documents/list?{{.SortURL "date"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Uploaded<span class="sort-arrow {{if eq .SortBy "date"}}active {{.SortDir}}{{end}}"></span></a></th>
             <th class="col-size sort-col" data-col="size"><a class="th-sort" href="/documents?{{.SortURL "size"}}" hx-get="/documents/list?{{.SortURL "size"}}" hx-target="#doc-table-wrap" hx-swap="outerHTML" hx-push-url="true">Size<span class="sort-arrow {{if eq .SortBy "size"}}active {{.SortDir}}{{end}}"></span></a></th>
+            <th class="col-download"></th>
             <th class="col-actions"></th>
           </tr>
         </thead>
@@ -126,10 +127,23 @@
             </td>
             <td class="cell-muted col-date">{{fmtDate $doc.UploadedAt}}</td>
             <td class="cell-muted col-size">{{fmtSize $doc.FileSize}}</td>
+            <td class="col-download">
+              <a class="btn-icon btn-download{{if $doc.TempActive}} is-live{{end}}" href="{{$doc.DownloadURL}}" target="_blank" rel="noopener"
+                 title="{{if $doc.TempActive}}Open the ready download{{else}}Download (files over 20 MB open in Telegram){{end}}" aria-label="Download {{$doc.FileName}}">
+                <svg class="download-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 17v1.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </a>
+            </td>
             <td class="col-actions">
               <form method="post" action="/documents/{{$doc.ID}}/delete" class="row-actions" confirm-doc-delete>
                 <input type="hidden" name="confirm" value="1">
-                <button class="btn btn-ghost btn-sm btn-danger" type="submit" title="Remove from archive (file stays on Telegram)">Delete</button>
+                <button class="btn-icon btn-delete" type="submit" title="Remove from archive (file stays on Telegram)" aria-label="Delete {{$doc.FileName}}">
+                  <svg class="trash-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m3 0-.8 12.14A2 2 0 0 1 15.2 21H8.8a2 2 0 0 1-2-1.86L6 7h12Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                  </svg>
+                </button>
               </form>
             </td>
           </tr>

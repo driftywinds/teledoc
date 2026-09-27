@@ -582,7 +582,60 @@ select.input { appearance: auto; }
 .col-tags   { width: 24%; }
 .col-date   { width: 7.5rem; }
 .col-size   { width: 5.5rem; }
-.col-actions{ width: 6rem; white-space: nowrap; text-align: right; }
+.col-download{ width: 3.5rem; text-align: center; }
+.col-actions{ width: 3.5rem; white-space: nowrap; text-align: right; }
+
+/* Icon-only row buttons (download / delete). Mirrors the bulk toolbar's
+   trash treatment, sized down for the rows. */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.btn-icon svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+.btn-icon:hover,
+.btn-icon:focus-visible {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  color: var(--foreground);
+}
+.btn-icon.btn-download:hover,
+.btn-icon.btn-download:focus-visible {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+}
+/* The file is currently live in the temp directory: green dot in the corner. */
+.btn-icon.btn-download.is-live {
+  color: var(--success);
+}
+.btn-icon.btn-download.is-live::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+}
+.btn-icon.btn-delete:hover,
+.btn-icon.btn-delete:focus-visible {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
 
 .col-select {
   background: var(--surface-2);

@@ -8,3 +8,6 @@ services:
       - .env
     volumes:
       - ./data:/data
+      # Temp downloads live here (configurable via TEMP_DIR); the container
+      # only ever creates/deletes teledoc- prefixed files inside it.
+      - ./temp:/data/temp

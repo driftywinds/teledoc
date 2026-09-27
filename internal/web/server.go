@@ -5,6 +5,7 @@
 package web
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"embed"
@@ -21,6 +22,7 @@ import (
 
 	"teledoc/internal/rules"
 	"teledoc/internal/store"
+	"teledoc/internal/telegram"
 )
 
 //go:embed templates/*.html
@@ -37,13 +39,23 @@ type Server struct {
 
 	password string // empty = no auth (trusted LAN)
 
+	temp *tempManager // temp downloads for the web UI
+	tg   telegram.API // Telegram API access for temp downloads (nil disables)
+
 	mu       sync.Mutex
 	sessions map[string]time.Time
 }
 
+// TempConfig configures the temp-download feature.
+type TempConfig struct {
+	Dir string        // where fetched files live (TEMP_DIR)
+	TTL time.Duration // how long a fetched file stays downloadable
+}
+
 // New creates the web server. When password is non-empty every page (except
-// /login and /static) requires a session cookie.
-func New(st *store.Store, engine *rules.Engine, password string, logger *log.Logger) *Server {
+// /login and /static) requires a session cookie. api may be nil, which
+// disables the temp-download feature (download clicks redirect to Telegram).
+func New(st *store.Store, engine *rules.Engine, password string, logger *log.Logger, tempCfg TempConfig, api telegram.API) *Server {
 	if logger == nil {
 		logger = log.Default()
 	}
@@ -53,6 +65,18 @@ func New(st *store.Store, engine *rules.Engine, password string, logger *log.Log
 		log:      logger,
 		password: password,
 		sessions: map[string]time.Time{},
+		temp:     newTempManager(tempCfg.Dir, tempCfg.TTL, logger),
+		tg:       api,
+	}
+}
+
+// Start launches the server's background work: the temp-download sweeper
+// that deletes files whose window has closed (and orphans left by a previous
+// run). Call it once after New, before serving traffic. When no Telegram API
+// client was provided the feature is disabled and nothing runs.
+func (s *Server) Start(ctx context.Context) {
+	if s.tg != nil {
+		s.temp.Start(ctx)
 	}
 }
 
@@ -71,6 +95,8 @@ func (s *Server) Handler() http.Handler {
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /{$}", s.handleDocuments)
 	protected.HandleFunc("GET /documents", s.handleDocuments)
+	protected.HandleFunc("GET /documents/{id}/download", s.handleDocumentDownload)
+	protected.HandleFunc("GET /temp/{id}/{name}", s.handleTempFile)
 	protected.HandleFunc("GET /documents/list", s.handleDocumentList) // htmx partial
 	protected.HandleFunc("POST /documents/{id}/tags", s.handleDocumentTag)
 	protected.HandleFunc("POST /documents/{id}/delete", s.handleDocumentDelete)
@@ -286,7 +312,7 @@ func setFlash(w http.ResponseWriter, msg string) {
 
 type documentsPage struct {
 	Tags        []store.Tag
-	Documents   []store.DocumentWithTags
+	Documents   []documentWithMeta
 	Search      string
 	ActiveTags  map[int64]bool
 	Untagged    bool
@@ -429,9 +455,16 @@ func (s *Server) documentsData(r *http.Request) (documentsPage, error) {
 	if total == 0 {
 		showFrom = 0
 	}
+	// Attach per-row download metadata (url vs t.me fallback) for the
+	// documents grid.
+	var temp *tempManager
+	if s.temp != nil && s.tg != nil {
+		temp = s.temp
+	}
 	showTo := (page-1)*perPage + len(docs)
+	withMeta := decorateDocuments(docs, temp)
 	return documentsPage{
-		Tags: tags, Documents: docs, Search: search,
+		Tags: tags, Documents: withMeta, Search: search,
 		ActiveTags: active, Untagged: untagged, TotalDocs: total,
 		SortBy: sortBy, SortDir: sortDir,
 		Page: page, PerPage: perPage, TotalPages: totalPages,
@@ -439,6 +472,35 @@ func (s *Server) documentsData(r *http.Request) (documentsPage, error) {
 		Q:           q,
 		CurrentTime: time.Now(),
 	}, nil
+}
+
+// documentWithMeta is a document plus what the row template needs to render
+// its download button: a live temp URL when the file's window is open,
+// otherwise the handler URL (which fetches, reuses, or falls back).
+type documentWithMeta struct {
+	store.Document
+	Tags       []store.Tag
+	DownloadURL string // href for the download icon
+	TempActive  bool   // file currently served from the temp dir
+}
+
+// decorateDocuments wraps listed documents with their download metadata.
+// A doc over the cap still gets the handler URL: the handler redirects to
+// Telegram, so the row needs no size logic of its own.
+func decorateDocuments(docs []store.DocumentWithTags, temp *tempManager) []documentWithMeta {
+	out := make([]documentWithMeta, len(docs))
+	for i, d := range docs {
+		m := documentWithMeta{Document: d.Document, Tags: d.Tags}
+		m.DownloadURL = fmt.Sprintf("/documents/%d/download", d.ID)
+		if temp != nil {
+			if e := temp.get(d.ID, time.Now()); e != nil {
+				m.DownloadURL = e.url(d.ID)
+				m.TempActive = true
+			}
+		}
+		out[i] = m
+	}
+	return out
 }
 
 func (s *Server) handleDocuments(w http.ResponseWriter, r *http.Request) {

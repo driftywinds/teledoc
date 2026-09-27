@@ -28,7 +28,7 @@ func TestTemplatesParseAndRender(t *testing.T) {
 }
 
 func TestRenderPagesWithoutError(t *testing.T) {
-	s := New(nil, nil, "", nil) // store/engine unused on the code paths below
+	s := New(nil, nil, "", nil, TempConfig{}, nil) // store/engine unused on the code paths below
 	r := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 
@@ -94,7 +94,7 @@ func TestHandleDocumentsBulkTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := New(st, rules.New(st, nil), "", nil)
+	s := New(st, rules.New(st, nil), "", nil, TempConfig{Dir: t.TempDir(), TTL: time.Minute}, nil)
 	handler := s.Handler()
 
 	post := func(body string) {

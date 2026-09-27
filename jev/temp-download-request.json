@@ -1,0 +1,82 @@
+{
+  "state": "TeleDoc: a single-binary Go web app that archives documents posted to a Telegram channel (metadata only: name, size, mime, tags, t.me link) in SQLite and shows them in a dark minimal web UI (Go html/template + htmx, session-cookie auth guarded by an optional ADMIN_PASSWORD). New feature request: a per-row download icon button in the documents table. When clicked for a document whose file size is under the Bot API 20 MB cap, the server fetches the file bytes from Telegram (getFile + file download URL), stores them in a temp directory, starts a 10-minute timer (duration configurable in minutes via .env), and serves the file to the user in a new tab via a URL like /temp/<document>.<extension> (works unchanged behind a reverse proxy like Caddy on the user's own domain). After 10 minutes the file is deleted; a later click re-fetches it. If the same document's download button is clicked again while its window is still open, the server must reuse the existing temp file and not restart the timer or re-fetch. If the document is 20 MB or larger, clicking download takes the user to the t.me link instead (normal document clicks already do that). The temp URL must not be usable without auth: anyone with the link during the 10-minute window must not be able to grab a private file. The temp download location must be mappable in docker-compose. The row Delete button changes from the word Delete to a trash-can icon, in conformity with the icon-only download button. Architecture I plan: a small internal package holding an in-memory registry (map of document id -> temp file path + expiry), a download handler that checks the registry first, fetches from Telegram when absent, and a single background sweeper goroutine deleting expired files. The web app already has the bot API client handle, so the web layer can call getFile and the download URL directly.",
+  "model": "jev-latest",
+  "questions": {
+    "temp_auth": {
+      "type": "choice",
+      "instructions": "How should /temp/* URLs be protected so a leaked link during the 10-minute window cannot serve a private file to a stranger?",
+      "criteria": {
+        "reuse_session_cookie": "Serve /temp/* behind the same session-cookie auth as every other page: the temp URL only works in a browser that is logged in to the site (cookie guards it; expired/absent session redirects to /login).",
+        "signed_one_time_token": "The download click issues a random unguessable token scoped to that temp file and the URL carries it (e.g. /temp/<token>/<file>); serving depends on the token, independent of site login.",
+        "basic_http_auth": "Temp URLs prompt for HTTP Basic auth credentials even when the rest of the site uses session cookies."
+      }
+    },
+    "temp_url_shape": {
+      "type": "choice",
+      "instructions": "What should the temp URL path look like, given the user explicitly asked for the shape /temp/<document>.<extension> (e.g. http://localhost:9879/temp/report.pdf) and it must survive reverse proxies and 10-minute re-visits?",
+      "criteria": {
+        "docid_omitted": "Exactly /temp/<document>.<extension> — the file name alone identifies it (collisions between two archived files with identical names must then be handled).",
+        "docid_plus_filename": "/temp/<documentID>/<document>.<extension> — keeps the user's requested shape for the browser-visible file name while the id makes every URL unique and stable.",
+        "random_token_filename": "/temp/<randomToken>-<document>.<extension> — unguessable URLs but a different shape than requested."
+      }
+    },
+    "ttl_expiry_mechanism": {
+      "type": "choice",
+      "instructions": "How should expired temp files actually get deleted at the end of the configurable 10-minute window?",
+      "criteria": {
+        "single_sweeper": "One background goroutine wakes every 30-60 seconds and deletes every registry entry past its expiry (few moving parts; worst-case file lingers under a minute past expiry).",
+        "per_file_timer": "Each successful fetch spawns a time.AfterFunc(10m) goroutine that deletes just that file (precise timing, one live timer per file).",
+        "lazy_check_only": "No background process; files are deleted only when someone hits their URL after expiry (a file nobody re-requests would linger forever)."
+      }
+    },
+    "ttl_start_moment": {
+      "type": "noul",
+      "instructions": "Should the 10-minute window start when the file has finished downloading from Telegram into the temp directory, rather than when the button was clicked?",
+      "criteria": {
+        "true": "Start the TTL when the temp file is fully written (a slow multi-MB fetch would otherwise eat into the user's window).",
+        "false": "Start the TTL at button click / registry entry creation, regardless of fetch duration."
+      }
+    },
+    "size_cap_handling": {
+      "type": "choice",
+      "instructions": "How should the 20 MB Bot API download cap be applied when the download button is clicked?",
+      "criteria": {
+        "fixed_20mb_redirect": "Hard-check FileSize >= 20 MiB and redirect to the t.me link; no env var for the cap (the Bot API cap is fixed anyway).",
+        "env_configurable_cap": "Make the cap an env var (default 20) checked the same way, so a self-hosted local Bot API server (which allows bigger files) can raise it."
+      }
+    },
+    "repeat_click_extends_timer": {
+      "type": "noul",
+      "instructions": "When the same document's download button is clicked again while its temp window is still open, should the expiry deadline stay fixed (no extension)?",
+      "criteria": {
+        "true": "Keep the original deadline: the file always dies exactly N minutes after the first fetch; repeat clicks just re-open the same URL.",
+        "false": "Reset/extend the countdown on every repeat click."
+      }
+    },
+    "download_button_for_oversize": {
+      "type": "choice",
+      "instructions": "The user said: under 20 MB the button downloads via temp; over 20 MB the site 'takes the user to the telegram link'. How should the row render?",
+      "criteria": {
+        "one_icon_server_decides": "Always render the same download icon; the server-side download handler redirects oversize documents to the t.me link (UI never needs to know the cap).",
+        "icon_vs_external_icon": "Render the download icon for eligible docs but an external-link icon for oversize docs, decided server-side at render time from the stored file size."
+      }
+    },
+    "delete_icon_variant": {
+      "type": "choice",
+      "instructions": "Replacing the row Delete button's word with a trash icon — which icon treatment fits the existing UI (the bulk 'Delete selected' toolbar already uses a specific inline SVG trash icon)?",
+      "criteria": {
+        "reuse_toolbar_trash": "Reuse the exact trash SVG already used by the bulk 'Delete selected' toolbar button, sized down for the row.",
+        "new_simpler_trash": "Draw a new, simpler trash outline icon just for row buttons."
+      }
+    },
+    "new_tab_mechanism": {
+      "type": "choice",
+      "instructions": "The user wants the temp download served 'in a new tab'. The row currently uses a POST form for delete. How should the download click work?",
+      "criteria": {
+        "anchor_target_blank": "A plain <a href=\"/documents/{id}/download\" target=\"_blank\"> icon link; the server 303-redirects to the temp URL (or the t.me link for oversize) in the new tab. No JS needed.",
+        "form_post_new_tab": "A POST form with target=\"_blank\" like the delete button, redirecting to the temp URL.",
+        "js_window_open": "A button whose click handler calls window.open to the download URL."
+      }
+    }
+  }
+}
