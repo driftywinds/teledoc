@@ -160,13 +160,20 @@ func main() {
 	// hardExit deadline below, whichever comes first).
 	go func() {
 		<-ctx.Done()
-		log.Print("shutting down (Ctrl+C); waiting for Telegram polling to stop...")
+		// These lines use the same bounded, timeout-guarded direct writer as
+		// the final "bye" below (not log.Print/log.Printf, which go through
+		// the async pipeline). If the console is wedged — e.g. Windows
+		// PowerShell/cmd QuickEdit Mode pauses a process's stdout writes the
+		// moment you click into the window to select or scroll text — the
+		// async pipeline can stall or drop lines, and shutdown's own status
+		// messages were being silently lost right when they mattered most.
+		logs.TryWriteLine(3*time.Second, "shutting down (Ctrl+C); waiting for Telegram polling to stop...")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
-			log.Printf("web server shutdown: %v", err)
+			logs.TryWriteLine(3*time.Second, "web server shutdown: "+err.Error())
 		} else {
-			log.Print("web server stopped")
+			logs.TryWriteLine(3*time.Second, "web server stopped")
 		}
 	}()
 

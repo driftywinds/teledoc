@@ -30,7 +30,7 @@ vendor/
 
 # --- Logs ---
 *.log
-logs/
+/logs/
 
 # --- Editors & OS ---
 .vscode/
