@@ -100,37 +100,108 @@ The SQLite database persists in the `teledoc-data` volume at `/data/teledoc.db`.
 | `LISTEN_ADDR` | `:9879` | Web UI listen address |
 | `TEMP_DIR` | `<os temp>/teledoc-downloads` | Where downloaded files live before being served |
 | `TEMP_FILE_TTL_MINUTES` | `10` | How long a downloaded file stays available |
+| `NO_COLOR` | *(unset)* | Any non-empty value disables colored log output |
+| `FORCE_COLOR` | *(unset)* | `1` forces colored log output even when piped |
 
 ## Downloading documents
 
-Every document row has a download button next to the delete button.
+Every document row has a download button next to the delete button. Files are
+never stored permanently: the archive keeps metadata only, and a download is a
+short-lived copy fetched from Telegram on demand.
 
-- **Files up to 20 MB** (the Bot API download cap) are fetched from Telegram
-  into `TEMP_DIR` and served straight from the site at a URL like
-  `/temp/<id>/<file name>` — which keeps working unchanged behind a reverse
-  proxy on your own domain. The file stays available for
-  `TEMP_FILE_TTL_MINUTES` minutes, then it is deleted; clicking download
-  again fetches it fresh. Clicking download again **inside** the window
-  re-opens the same file without re-downloading it or restarting the timer.
-- **Files over 20 MB** open the document's Telegram message instead — bots
+**How a download works**
+
+1. **Click.** The server looks up the document's Telegram file id and logs
+   `web: download triggered for document N (...)`.
+2. **Fetch.** The bot asks Telegram for the file and streams it into
+   `TEMP_DIR` as `teledoc-<id>-<file name>` (in-flight fetches use a
+   `.teledoc-part-*` name and are renamed on success). If Telegram answers with
+   a flood-control `429`, the server waits out the demanded `retry_after` (as
+   long as it fits a short budget) and retries instead of failing the click.
+   Logged as `web: downloaded document N (...) ... available until HH:MM:SS`.
+3. **Redirect.** The browser is redirected to `/temp/<id>/<file name>`, served
+   straight from the site (with range support), so it keeps working unchanged
+   behind a reverse proxy on your own domain.
+4. **Expire.** The file stays available for `TEMP_FILE_TTL_MINUTES` minutes.
+   A background sweeper (every 30 s) then deletes it and logs
+   `web: temp window closed for document N`. Clicking download again **inside**
+   the window re-opens the same file without re-downloading it or restarting
+   the timer; after the window it is fetched fresh.
+
+**Rules and limits**
+
+- **Files up to 20 MB** (the Bot API download cap) are served as above.
+  **Files over 20 MB** open the document's Telegram message instead - bots
   cannot fetch those, so Telegram is the only way to get them.
 - Temp URLs are guarded by the same login as the rest of the site (when
-  `ADMIN_PASSWORD` is set), so a leaked `/temp/...` link is useless to
-  someone without an active session.
-- **Archived before downloads existed?** A download needs the Telegram file
-  id, which the bot only receives when a file is delivered to it. Re-send or
-  re-forward the file in the channel once — the bot links the new delivery
-  to the existing archive entry automatically (matched by channel, file name
-  and size) and downloads start working; no need to delete anything.
+  `ADMIN_PASSWORD` is set), so a leaked `/temp/...` link is useless to someone
+  without an active session.
+- **Crash cleanup.** If the process dies mid-window, the leftover files are
+  removed by an orphan sweep on the next run. It only ever touches files with
+  the `teledoc-` prefix, so `TEMP_DIR` is safe to point at a shared or mapped
+  directory.
+- **Archived before downloads existed?** A download needs the Telegram file id,
+  which the bot only receives when a file is delivered to it. Such documents
+  log `document has no Telegram file id (archived before file ids were
+  stored)`. Re-send or re-forward the file in the channel once - the bot links
+  the new delivery to the existing archive entry automatically (matched by
+  channel, file name and size) and downloads start working; no need to delete
+  anything.
 - Behind Caddy (or any reverse proxy), no extra configuration is needed: the
   proxy just forwards `/temp/*` like every other path.
+- **Docker:** `docker-compose.yml` maps `./temp` to the container's temp
+  directory so downloads survive restarts long enough to be swept properly.
+
+## Logging
+
+All output goes through `internal/logs`. Every line has the same shape:
+
+```
+web 2026/09/28 08:38:25 web: download triggered for document 28 (...)
+^^^ origin  ^^^^^^^^^^^^^^^^^^^ timestamp
+```
+
+- **Origins:** `tg` (ingestion), `tg-api` (Telegram client calls), `web` (UI
+  and downloads), `rules` (tagging engine) and `app` (startup, shutdown and
+  anything logged through the standard `log` package).
+- **Colors:** the origin prints in yellow and the timestamp in purple, but only
+  when stdout is a real terminal. Redirects, pipes, `docker logs` and
+  `NO_COLOR` get plain text, so log files stay clean. On Windows, ANSI support
+  is switched on for the console automatically.
+- **Non-blocking:** lines are handed to a buffered queue (1024 lines) and one
+  goroutine writes them. A slow or stuck console can never stall a request
+  handler, the temp-file sweeper or shutdown: overflow is dropped and counted,
+  and a `logs: dropped N line(s)` summary prints once output recovers. Each
+  individual write has a 2 s timeout, so one stalled write costs one line
+  rather than freezing the pipeline.
+- **Shutdown:** on Ctrl+C / SIGTERM you should see `shutting down (Ctrl+C)...`,
+  `web server stopped` and `bye`. The final `bye` lines use a bounded direct
+  write so shutdown can never hang on the console. If Telegram's long poll has
+  not unwound after 10 s the process exits anyway with
+  `bye (Telegram polling still unwinding; exiting)`; in-flight state is safe to
+  abandon because SQLite commits per statement and reactions are cosmetic.
+
+### Troubleshooting: logs stop appearing
+
+Startup lines print but download and shutdown lines never show, although the
+app keeps working. This was a real bug, fixed in `internal/logs`: detecting
+whether stdout is a terminal wrapped its handle in a second `os.File`
+(`os.NewFile`), and when the garbage collector later finalized that duplicate it
+closed the real stdout handle, so every later write failed silently. Terminal
+detection now only inspects the original `*os.File`. If you ever change
+`isTerminal`, never build a new `os.File` from `f.Fd()`. The regression test is
+`TestSupportsColorDoesNotCloseTheFile`.
+
+If you keep the `internal/logs` sources in git, make sure `.gitignore` uses
+`/logs/` (top level only) rather than `logs/`, which would also swallow
+`internal/logs/` and leave fresh clones unable to build.
 
 ## Development
 
 ```bash
-go test ./...      # rule engine, store (incl. hashtag sync/provenance) and bot tests
+go test ./...      # rule engine, store (incl. hashtag sync/provenance), bot, web/download and logging tests
 go vet ./...
 go build .
 ```
 
-Layout: `internal/store` (SQLite), `internal/rules` (Papra-style rule engine), `internal/telegram` (ingestion, hashtag parsing, reactions), `internal/web` (UI, embedded templates/static including vendored htmx).
+Layout: `internal/store` (SQLite), `internal/rules` (Papra-style rule engine), `internal/telegram` (ingestion, hashtag parsing, reactions), `internal/web` (UI, temp-file downloads, embedded templates/static including vendored htmx), `internal/logs` (colored, non-blocking log pipeline).
